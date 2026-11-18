@@ -1,0 +1,32 @@
+/*
+ * Cosmetic sanitizer — every DOM selector the app relies on lives here.
+ *
+ * Rules:
+ *   - Only semantic attributes (role, aria-label, href, name). Never Instagram's
+ *     generated class names: they are content-hashed and change on every deploy.
+ *   - Hiding is cosmetic. It must never be the only thing preventing access to a
+ *     surface; that is UrlPolicy's job.
+ *   - A selector that stops matching must leave the app usable. Nothing here may
+ *     hide a container that holds the message list or the composer.
+ *   - Do not hide `div[role="navigation"]` on a DM page: that is Instagram's own
+ *     DM top bar (Back / New message / Search). See PROGRESS.md §2.3.
+ *
+ * Scope after the M0 spike is much smaller than originally planned: DM pages
+ * render no global navigation at all, and the app never loads the feed.
+ *
+ * sanitizer-version: 1
+ * last change: 2026-11-18 — v1. Hides the new-message pencil only, because
+ *   `/direct/new/` is deliberately blocked (SPEC §4.5); leaving a visible
+ *   button that always refuses is a dead end. Nothing else is hidden: the
+ *   notes tray stays visible by product decision, and profile avatars stay
+ *   visible because UrlPolicy already refuses their destinations.
+ */
+
+/*
+ * "New message" opens a global recipient search. The route is blocked, so the
+ * entry point is hidden rather than left to fail. Matched on href — the anchor
+ * is the same in the inbox and in a thread.
+ */
+a[href$="/direct/new/"] {
+  display: none !important;
+}
