@@ -3,12 +3,11 @@
 State of the project for whoever picks this up next. Read this first, then
 `SPEC.md` for intended behavior and `AGENTS.md` for rules.
 
-**Last updated:** 2026-11-18
-**Current milestone:** M5 implemented and verified in Mode A and Mode B; three
-manual items remain (§11)
-**Next action:** finish the M5 leftovers (§11: post view, keyboard "next",
-focus-mode recovery), then M6 (persisted settings, About/version, release
-manifest, release build). See the status board.
+**Last updated:** 2026-11-23
+**Current milestone:** M6 complete; M7 (local fixture site + integration tests) next
+**Next action:** build `assets/test_site/` and the `InAppLocalhostServer` integration
+tests. Also worth a fixture: a fake login page with a `role="button"` sign-up
+control, to pin the client-side surface guard. See §14 for the M6 record.
 
 ---
 
@@ -20,10 +19,10 @@ manifest, release build). See the status board.
 | M1 Skeleton + pure core | **Done** | `UrlPolicy`, `InstagramRoutes`, app shell, 65 tests |
 | M2 Enforcement | **Done** | Three layers live; verified on device, see §9 |
 | M3 Sanitizer | **Done** | Small v1: hides the new-message pencil; report in debug. See §10 |
-| M4 Login + session | **Done except one destructive test** | Settings, clear-session control, expiry notice, 3 widget tests. The actual sign-out has not been executed (would block reel testing). See §11 |
-| M5 Single-item focus | **Done in Mode A and B** | Reel guard verified on device, 3 checklist items pending. See §11 |
-| M6 Settings/debug | Not started | Persisted reels toggle, About/version, release manifest, release smoke test |
-| M7 Regression tests | Not started | |
+| M4 Login + session | **Done** | Settings, clear-session control, expiry notice, 3 widget tests. Destructive path walked 2026-11-23 (§9) |
+| M5 Single-item focus | **Done** | Reel guard and Mode B verified on device; post-from-DM path untested (no post in the test thread). See §11 |
+| M6 Settings/debug | **Done** | Persisted reels toggle, version, release manifest, release smoke test. See §14 |
+| M7 Regression tests | Next | |
 
 ---
 
@@ -301,32 +300,32 @@ Only semantic attributes. Never generated classes.
   load / Sanitizer / Reel probe, and displays the guard log.
 - **Single-reel focus mode works** (Mode A, `SPEC.md` §5.1): tapping a reel in a
   thread opens it with a "Single reel · Close" banner; swiping neither advances
-  nor dismisses; Close and Android back return to the thread. **Mode B**
-  (`--dart-define=MI_BLOCK_REELS=true`) closes the viewer immediately with a
+  nor dismisses; Close and Android back return to the thread. **Mode B** is now
+  the "Block reels" choice in Settings; it closes the viewer immediately with a
   notice and restores the thread. Both verified on device.
-- **Settings sheet exists** with Clear session (confirmation dialog required) and
-  the unofficial-viewer disclaimer. Expired sessions are detected and explained.
+- **Settings sheet exists** with the persisted reels choice, Clear session
+  (confirmation dialog required), the version, and the unofficial-viewer
+  disclaimer. Expired sessions are detected and explained.
 - On device, verified in M2: `/explore/` blocked (click and native load),
   `/reels/`, profiles, `/accounts/edit/`, `https://example.com/` blocked,
   `instagram://` cancelled silently, `/` redirected to the inbox, thread open
   and back, reload preserves the page, back from inbox exits the app.
-- `flutter analyze` is clean and `flutter test` is green (74 tests).
+- `flutter analyze` is clean and `flutter test` is green (85 tests).
 
 ## 6. What does not work / does not exist yet
 
-- **The reels preference is not persisted.** There is no UI toggle; the mode is
-  a compile-time flag (`MI_BLOCK_REELS`). That is M6.
-- **Clear session has not actually been executed** on device. The confirmation
-  flow is verified; the destructive path is deliberately deferred until the
-  logged-in reel work was finished. It must be walked before release.
-- **Post viewing from a DM is untested.** `UrlPolicy` allows `/p/<code>/`, but M5
-  only exercised reels.
-- No release build has been attempted; the debug screen is still compiled into
-  release code paths behind `kDebugMode`.
+- **Post viewing from a DM is untested.** `UrlPolicy` allows `/p/<code>/` and a
+  standalone post page was verified, but the DM-attachment path was not: the test
+  thread contains only a reel.
+- **Session expiry has not been observed** on device. The detection code exists;
+  the checklist item stays open until a real expiry happens.
+- **The client-side sign-up flow is a best-effort block**, not a guarantee
+  (§4.7). Its labels and DOM markers can change.
+- **`assets/test_site/` does not exist yet (M7).** Widget tests cover the
+  settings sheet; the browser screen has no widget test, and the JS guards have
+  no fixture-driven integration tests.
 - The M0 probe data is from one session on one account; treat it as a snapshot,
   not a contract.
-- `assets/test_site/` does not exist yet (M7). Widget tests cover the settings
-  sheet only; the browser screen has no widget test.
 
 ## 7. Known unknowns
 
@@ -513,6 +512,10 @@ M4 (session/clear-session) and M5 (reel guard) are both delivered; see §11.
 
 ## 11. M4 and M5 delivery notes
 
+> The `--dart-define=MI_BLOCK_REELS` switch described below was removed in M6.
+> Mode B is now Settings → Block reels, persisted with `shared_preferences`
+> (§14). The rest of this section is the historical M4/M5 record.
+
 ### M4 — session
 
 | File | Purpose |
@@ -533,10 +536,12 @@ load of `/accounts/login` while that flag is set and `_clearingSession` is false
 shows "Your session ended. Sign in again." Both flags are set by `_clearSession`
 so a deliberate sign-out is not reported as an expiry.
 
-**Not yet walked:** the actual sign-out. The confirmation dialog and its Cancel
-path were verified on device; the destructive path was skipped because signing
-out would have blocked the logged-in reel work below. Walk §10.3 before a
-release, including "history does not keep the old page".
+**Destructive path walked 2026-11-23.** Confirmation dialog → Clear deleted the
+cookies (Instagram asked for cookie consent again) and landed on the login page.
+Declining optional cookies showed the login form. Back from login did not reveal
+the old thread (history was cleared); it reloaded login. Force-stop and relaunch
+stayed on login. The expiry-notice path was not triggered by a real expiry and
+remains unverified on device.
 
 ### M5 — single-reel focus mode
 
@@ -607,18 +612,210 @@ Mode B (`flutter run --dart-define=MI_BLOCK_REELS=true`):
 - reel tapped, snackbar "Reels aren't available in this mode", viewer closed,
   thread restored
 
-### Still to do for M5
+### M5 follow-up results (2026-11-23)
 
-1. Open a **post** from a DM and confirm it does not open a feed.
-2. Confirm no hardware-keyboard/media "next" affordance reaches a second reel.
-3. Background/foreground the app while a reel is open and confirm focus mode
-   recovers (or exits cleanly).
-4. Re-run with the normal build (no `--dart-define`) after Mode B testing, so the
-   installed app is back on the default mode.
+1. **Post from a DM — still open.** The test thread contains only a reel, so the
+   DM-attachment path could not be walked. A standalone `/p/<code>/` page was
+   verified instead: it renders as one "Post" view with no feed and no scrolling
+   beyond it. That is what exposed the chrome leak fixed in §13.
+2. **Keyboard/media "next" — done.** With a reel open, `KEYCODE_MEDIA_NEXT`,
+   `KEYCODE_DPAD_DOWN` and `KEYCODE_PAGE_DOWN` changed nothing; the viewer stayed
+   open and the same reel kept playing.
+3. **Background/foreground — done.** Home then relaunch left the viewer open with
+   the banner; two swipes up and one down still did nothing.
+4. **Normal build restored.** The app now runs without `--dart-define`; Mode A is
+   the installed behavior again.
 
 ### Next
 
-M6: persisted reels preference (replaces `MI_BLOCK_REELS`), About/version,
-release manifest permissions, release build smoke test. The reels toggle belongs
-in `SettingsSheet`; persistence should use `shared_preferences` only if that
-dependency is justified in writing here first (AGENTS.md §2.6).
+M6 was the next step at the time and is now delivered; see §14. The remaining
+known gaps are listed in §6.
+
+---
+
+## 13. Post-page chrome and sanitizer v2 (2026-11-23)
+
+While checking the M5 post item, a standalone post page
+(`https://www.instagram.com/p/C9k8L3GvOMD/`) turned out to render two pieces of
+global chrome that DM pages never show:
+
+1. a fixed bottom tab bar (Home / Explore / Reels / Messages), and
+2. a fixed "Use the app" install banner.
+
+Both are cosmetic leaks, not security holes: `UrlPolicy` still refuses every
+destination behind those links. But SPEC §8 says global navigation must be
+hidden, so v2 fixes them.
+
+Neither node has a semantic attribute (`role`, `aria-label`, `href` on the
+wrapper). A CSS `:has()` selector would match every ancestor up to `<body>` and
+hide the whole page, so the hide is structural in `guard_load.js`:
+
+- find `a[href="/explore/"]` / `a[href="/reels/"]`, walk up to the fixed
+  ancestor with height ≤ 180 px, hide that ancestor;
+- find a `button` whose entire label is `Use the app`, hide its fixed ancestor.
+
+It runs at document start, on `DOMContentLoaded`, on `pageshow`, on the
+mutation-observer flush, and on a 1.5 s timer. DM pages are untouched because
+they contain neither marker. The sanitizer report gained `chromeHidden`, a count
+of nodes hidden this way.
+
+Verified on the post page: tab bar and banner gone, post fills the screen.
+Inbox and thread: unchanged. Sanitizer version is now **2**; the stylesheet itself
+is unchanged (still one rule). Tests: 78, all green.
+
+One CSS housekeeping note: the stylesheet header used to say global nav is never
+rendered. That is only true of DM pages; the comment now says so.
+
+---
+
+## 12. Post-M5 cold-boot fix — `/consent/` (2026-11-23)
+
+A cold start on 2026-11-23 exposed a real gap. Instagram redirected the inbox to
+`https://www.instagram.com/consent/?flow=user_cookie_choice_v2&source=pft_user_cookie_choice`,
+`UrlPolicy` blocked it (deny by default), and the WebView was left on a **blank
+page** with the "Not available" notice. The session was fine; the only problem
+was that the consent interstitial had no allow rule.
+
+Fix: `/consent` is now an allowed exact path. It is Instagram's own cookie
+consent page, shown once; the app never accepts it on the user's behalf
+(`SPEC.md` §8). Two tests were added: the real consent URL with its query is
+allowed, and `/consent-notice/` and `/consent/extra/` stay blocked. Total unit
+tests: 78.
+
+After the fix, a cold start showed the consent page, and choosing "Decline
+optional cookies" landed on the inbox with the session intact and the pencil
+still hidden. `SPEC.md` §4.3 has the new row.
+
+Lesson for whoever is next: a cold boot exercises redirects that a warm session
+never shows. Run the cold-start checklist after any policy change, not only
+after a feature change.
+
+---
+
+## 14. M6 delivery notes — settings, About, release (2026-11-23)
+
+### What changed
+
+| File | Purpose |
+| --- | --- |
+| `lib/core/settings/app_settings.dart` | persisted reels choice; the only stored state |
+| `lib/main.dart` | loads settings before `runApp` |
+| `lib/app.dart` | passes settings to the browser screen |
+| `lib/webview/browser_screen.dart` | rebuilds the policy on change, replaces the injected script, reloads |
+| `lib/ui/settings/settings_sheet.dart` | reels segmented control, version, clear session |
+| `lib/core/config/app_config.dart` | `version` constant; `MI_BLOCK_REELS` removed |
+| `test/app_settings_test.dart` | persistence and notification tests |
+| `test/app_config_test.dart` | version stays in sync with `pubspec.yaml` |
+| `test/settings_sheet_test.dart` | toggle + confirmation-flow tests |
+| `android/app/src/main/AndroidManifest.xml` | `INTERNET`, label, `allowBackup=false` |
+
+### Dependency justification (AGENTS.md §2.6)
+
+`shared_preferences: ^2.5.6` was added for one boolean. Why it earns its place:
+
+- Android's app-data directory is not reachable from Dart without another
+  plugin, and a hand-written platform channel is more native code to own and
+  review than this official Flutter plugin.
+- Only `reels_blocked` is stored. No user identifier, no session, no message
+  content. `allowBackup=false` keeps even that out of cloud backups.
+- It brings ~18 transitive packages, almost all per-platform implementations
+  that do not run on Android. That is the cost; it is recorded here deliberately.
+
+### How the reels setting works
+
+`AppSettings` is loaded before `runApp`, so the document-start bundle is correct
+on the very first page. The sheet writes through `setBlockReels`, which updates a
+`ValueNotifier<ReelPolicy>` and then the store. The browser screen listens,
+rebuilds `UrlPolicy`, rebuilds the bundle, **replaces the WebView's user script**
+and reloads.
+
+That last step was a bug worth remembering: `initialUserScripts` is only read
+when the platform WebView is created. Rebuilding the widget does not change the
+script on an existing WebView, so the first version of this feature only applied
+after a cold start. `removeAllUserScripts()` + `addUserScript()` + `reload()`
+fixed it. Verified live: block → allow → block without restarting the app, with
+`window.__MI_RULES.reelPolicy` checked over CDP each time.
+
+### Release manifest
+
+The main manifest had **no `INTERNET` permission**; only the debug and profile
+manifests did. Every release build would have shown a blank page. Fixed, along
+with:
+
+- `android:label="Minimal Instagram"`;
+- `android:allowBackup="false"` — a WebView session should not be copied into a
+  cloud backup.
+
+`aapt2 dump badging` on the release APK: `versionName='1.0.0'`,
+`application-label:'Minimal Instagram'`, `uses-permission: INTERNET`.
+
+### Release smoke test (SPEC §10.5), 2026-11-23
+
+`flutter build apk --release` → 48.7 MB. Uninstalled the debug app, installed the
+release APK on the emulator, then:
+
+- cold start reached Instagram (consent page) → `INTERNET` works;
+- no debug icon; settings and reload remain;
+- declining consent showed the login page;
+- **"Create new account" was refused** — stayed on login with the "Not available"
+  notice (after the fix below; the first run exposed the bypass);
+- Settings showed `Minimal Instagram 1.0.0`;
+- switching to Block reels survived force-stop + relaunch;
+- Clear session deleted the cookies (consent reappeared), and after declining the
+  login page returned; the reels choice survived (it is app storage, not web
+  storage).
+
+### The client-side sign-up bypass (found by the release test)
+
+The first release smoke test failed in an interesting way: tapping "Create new
+account" showed the sign-up screen even though the policy blocks
+`/accounts/emailsignup/`. Investigation (debug build + CDP):
+
+- the control is a `div[role="button"]` whose tap target is a `<span>` **seven**
+  levels below the labelled div;
+- the sign-up flow is rendered client-side; the URL stays on
+  `/accounts/login/...` and `history.length` stays 1, so `UrlPolicy` and both
+  native layers see nothing;
+- the first guard walked only six ancestors, so it never found the label;
+- a synthetic `.click()` was blocked, but a real tap opened the flow on a
+  press event handled at window level.
+
+Fix, in two layers:
+
+1. `guard_document_start.js` walks up to 12 ancestors, matches a short
+   `aria-label` deny list (`create new account`, `create account`, `sign up`,
+   `sign up with email`) and refuses click, Enter, and press events on `window`
+   capture. It reports the intended route, so the guard log shows a `[surface]`
+   block and the user gets the normal notice.
+2. `guard_load.js` keeps a backstop: if the sign-up markers
+   (`input[type="tel"][aria-label="Mobile Number"]` or
+   `button[aria-label="Sign up with email"]`) appear on a login page, it reports
+   the block and reloads. Checked every 500 ms and on DOM mutations.
+
+Verified after the fix: tapping the control keeps the login page and shows the
+notice; the guard log reads
+`[surface] block https://www.instagram.com/accounts/emailsignup/ — stopped inside the page`.
+This is **best effort**, not a guarantee: it depends on an Instagram label and a
+DOM marker. It is documented in `SPEC.md` §4.7 and `AGENTS.md` §2.7 alongside the
+reel guard. If the label changes, the backstop still kicks the user back to login;
+if the markers change too, the surface would be reachable, and that must be
+recorded as breakage rather than denied.
+
+### Verify M6
+
+```bash
+flutter analyze                  # clean
+flutter test                     # 85 tests
+flutter build apk --release
+```
+
+On device, walk `SPEC.md` §10.5. The app is currently left on the login page
+(session cleared during the test); sign in with the test account to resume
+manual DM/reel checks.
+
+### Next
+
+M7: `assets/test_site/` served by `InAppLocalhostServer`, integration tests that
+exercise blocking without a login, and a home for the JS guard tests. The
+client-side sign-up guard is a good first fixture: a fake login page with a
+`role="button"` that renders a fake sign-up surface would pin the behavior.

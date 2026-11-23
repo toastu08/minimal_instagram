@@ -22,6 +22,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../core/config/app_config.dart';
 import '../core/logging/guard_log.dart';
+import '../core/settings/app_settings.dart';
 import '../navigation/instagram_routes.dart';
 import '../navigation/url_policy.dart';
 import '../ui/common/error_view.dart';
@@ -32,15 +33,20 @@ import 'webview_settings.dart';
 /// Hosts Instagram and enforces the URL policy.
 class BrowserScreen extends StatefulWidget {
   /// Creates the screen.
-  const BrowserScreen({super.key});
+  const BrowserScreen({super.key, required this.settings});
+
+  /// Persisted preferences, owned by the app root.
+  final AppSettings settings;
 
   @override
   State<BrowserScreen> createState() => _BrowserScreenState();
 }
 
 class _BrowserScreenState extends State<BrowserScreen> {
-  /// Apply the product's reel setting from one place.
-  late final UrlPolicy _policy = UrlPolicy(reelPolicy: AppConfig.reelPolicy);
+  /// The policy in force. Rebuilt when the user changes the reels preference.
+  late UrlPolicy _policy = UrlPolicy(
+    reelPolicy: widget.settings.reelPolicy.value,
+  );
 
   /// Shared decision log, read by the debug screen.
   final GuardLog _log = GuardLog(capacity: AppConfig.guardLogCapacity);
@@ -81,7 +87,47 @@ class _BrowserScreenState extends State<BrowserScreen> {
   @override
   void initState() {
     super.initState();
+    widget.settings.reelPolicy.addListener(_onReelPolicyChanged);
     unawaited(_loadGuardScript());
+  }
+
+  @override
+  void dispose() {
+    widget.settings.reelPolicy.removeListener(_onReelPolicyChanged);
+    super.dispose();
+  }
+
+  /// Applies a reels-preference change.
+  ///
+  /// The navigation policy changes immediately, but the in-page guard only reads
+  /// its rules at document start, so the page is reloaded after the bundle is
+  /// rebuilt. Reloading also leaves any open reel viewer, which is the safe
+  /// outcome when switching to "Block reels".
+  void _onReelPolicyChanged() {
+    if (!mounted) return;
+    setState(() {
+      _policy = UrlPolicy(reelPolicy: widget.settings.reelPolicy.value);
+    });
+    unawaited(_applyReelPolicy());
+  }
+
+  Future<void> _applyReelPolicy() async {
+    await _loadGuardScript();
+    final InAppWebViewController? controller = _controller;
+    final String? source = _guardSource;
+    if (!mounted || controller == null || source == null) return;
+
+    // `initialUserScripts` is only read when the platform WebView is created.
+    // Rebuilding the widget does not replace the script on an existing WebView,
+    // so the old rules would survive the reload. Replace them explicitly.
+    await controller.removeAllUserScripts();
+    await controller.addUserScript(
+      userScript: UserScript(
+        source: source,
+        injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+      ),
+    );
+    await controller.reload();
   }
 
   /// Builds one document-start script, in a fixed order.
@@ -501,8 +547,13 @@ class _BrowserScreenState extends State<BrowserScreen> {
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (BuildContext context) =>
-          SettingsSheet(onClearSession: _clearSession),
+      builder: (BuildContext context) => SettingsSheet(
+        reelPolicy: widget.settings.reelPolicy,
+        onReelPolicyChanged: (ReelPolicy policy) =>
+            widget.settings.setBlockReels(policy == ReelPolicy.block),
+        onClearSession: _clearSession,
+        version: AppConfig.version,
+      ),
     );
   }
 

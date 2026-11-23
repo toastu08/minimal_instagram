@@ -5,12 +5,16 @@
 
 import 'package:flutter/material.dart';
 
+import 'core/settings/app_settings.dart';
 import 'webview/browser_screen.dart';
 
 /// The root widget.
 class MinimalInstagramApp extends StatelessWidget {
   /// Creates the app.
-  const MinimalInstagramApp({super.key});
+  const MinimalInstagramApp({super.key, required this.settings});
+
+  /// Persisted preferences, loaded before the first frame.
+  final AppSettings settings;
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +23,7 @@ class MinimalInstagramApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: _themeFor(Brightness.light),
       darkTheme: _themeFor(Brightness.dark),
-      home: const BrowserScreen(),
+      home: BrowserScreen(settings: settings),
     );
   }
 

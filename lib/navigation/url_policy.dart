@@ -86,10 +86,12 @@ final class UrlDecision {
 /// This does not control the in-DM reel viewer, which has no URL of its own.
 /// It only decides whether a `/reel/<code>/` link may be opened at all.
 enum ReelPolicy {
-  /// Allow a reel permalink through. Only meaningful once focus mode exists.
+  /// Allow a reel permalink through. Only meaningful with focus mode, which is
+  /// the default for a fresh install.
   allow,
 
-  /// Never open a reel permalink. Safe default until focus mode ships.
+  /// Never open a reel permalink. The guaranteed-safe fallback, exposed as
+  /// "Block reels" in Settings.
   block,
 }
 
@@ -97,9 +99,8 @@ enum ReelPolicy {
 final class UrlPolicy {
   /// Creates a policy.
   ///
-  /// [reelPolicy] defaults to [ReelPolicy.block] because focus mode does not
-  /// exist yet; allowing reel permalinks before then would expose the reels
-  /// feed with no way to contain it.
+  /// [reelPolicy] defaults to [ReelPolicy.block] so a policy built without the
+  /// user's choice fails safe. The app passes the persisted setting explicitly.
   const UrlPolicy({this.reelPolicy = ReelPolicy.block});
 
   /// How single reel permalinks are treated.
@@ -128,6 +129,11 @@ final class UrlPolicy {
     '/accounts/onetap',
     '/auth_platform',
     '/auth_platform/codeentry',
+    // Cookie consent. Observed on a cold start on 2026-11-23: the inbox
+    // redirected to `/consent/?flow=user_cookie_choice_v2...`, which the policy
+    // blocked, leaving a blank page. The consent page is Instagram's own and is
+    // shown once; the app never accepts it on the user's behalf.
+    '/consent',
   };
 
   /// `/challenge/...` is Instagram's security checkpoint. It must be reachable

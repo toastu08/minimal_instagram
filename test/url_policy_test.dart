@@ -43,6 +43,9 @@ void main() {
       'https://www.instagram.com/auth_platform/codeentry/?apc=AbC123',
       // Security checkpoint: without it a flagged login can never finish.
       'https://www.instagram.com/challenge/1234567890/abc/',
+      // Cookie consent interstitial, seen on a cold start (2026-11-23).
+      'https://www.instagram.com/consent/?flow=user_cookie_choice_v2&source=pft_user_cookie_choice',
+      'https://www.instagram.com/consent/',
       // A single post is one item by nature.
       'https://www.instagram.com/p/CxAbC123xyZ/',
       // Alternate Instagram hosts are the same app.
@@ -104,6 +107,8 @@ void main() {
       'https://www.instagram.com/direct/t/': 'thread with no id',
       'https://www.instagram.com/direct/t/abc/extra/': 'thread with extra path',
       'https://www.instagram.com/direct/reels/': 'DM reels surface',
+      'https://www.instagram.com/consent-notice/': 'consent look-alike',
+      'https://www.instagram.com/consent/extra/': 'consent sub-path',
       'https://www.instagram.com/api/v1/users/': 'navigated API call',
       'https://example.com/direct/inbox/': 'off-site host',
       'https://www.instagram.com.evil.com/direct/inbox/': 'host suffix spoof',

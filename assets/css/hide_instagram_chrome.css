@@ -11,15 +11,21 @@
  *   - Do not hide `div[role="navigation"]` on a DM page: that is Instagram's own
  *     DM top bar (Back / New message / Search). See PROGRESS.md §2.3.
  *
- * Scope after the M0 spike is much smaller than originally planned: DM pages
- * render no global navigation at all, and the app never loads the feed.
+ * DM pages render no global navigation at all, and the app never loads the feed.
+ * The one exception is the standalone post page (`/p/<code>/`), which does render
+ * Instagram's global tab bar; `guard_load.js` hides it structurally because it
+ * has no semantic attribute. See the version note below.
  *
- * sanitizer-version: 1
- * last change: 2026-11-18 — v1. Hides the new-message pencil only, because
- *   `/direct/new/` is deliberately blocked (SPEC §4.5); leaving a visible
- *   button that always refuses is a dead end. Nothing else is hidden: the
- *   notes tray stays visible by product decision, and profile avatars stay
- *   visible because UrlPolicy already refuses their destinations.
+ * sanitizer-version: 2
+ * last change: 2026-11-23 — v2. The stylesheet is unchanged; `guard_load.js`
+ *   now hides the global bottom tab bar and the "Use the app" banner
+ *   structurally, because the standalone post page (`/p/<code>/`) renders them
+ *   and neither has a semantic attribute to target. Verified on a real post
+ *   page; DM pages are untouched (they have no /explore/ or /reels/ links).
+ *   v1 (2026-11-18) hid the new-message pencil only, because `/direct/new/` is
+ *   deliberately blocked (SPEC §4.5); leaving a visible button that always
+ *   refuses is a dead end. The notes tray stays visible by product decision,
+ *   and profile avatars stay visible because UrlPolicy refuses their targets.
  */
 
 /*

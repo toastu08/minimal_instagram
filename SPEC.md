@@ -51,8 +51,9 @@ The app has exactly three user-facing surfaces plus one developer-only surface.
 
 A full-screen WebView with a thin app bar above it.
 
-- **App bar**: back button, title ("Messages"), reload, overflow menu.
-- **Overflow menu**: Settings, Debug info (debug builds only), About.
+- **App bar**: back button, title ("Messages"), settings, reload, and a debug
+  button in debug builds only.
+- **Settings** (bottom sheet): reels behavior, clear session, About/version.
 - The WebView fills the rest of the screen. Instagram's own navigation bars are
   hidden by the sanitizer, so the app bar is the only chrome the user sees.
 
@@ -70,13 +71,15 @@ States the screen must handle:
 
 ### 3.2 Settings
 
+- **Reels behavior**: `Single reel` (default) or `Block reels`. Changing it takes
+  effect immediately and is remembered across restarts. It is the only setting
+  stored on the device.
 - **Clear session**: deletes cookies and site data, then returns to the login page.
-- **Reels behavior**: `Single reel` (default) or `Block reels`.
 - **About**: version, and a plain statement that this is an unofficial wrapper.
 - **Debug info** (debug builds only): current URL, guard log, sanitizer report.
 
-Settings persist across restarts. Only these two values are stored; nothing
-about the user or the session is.
+Settings persist across restarts. Only the reels choice is stored; nothing about
+the user or the session is.
 
 ### 3.3 Debug info (debug builds only)
 
@@ -132,6 +135,7 @@ top-level navigations, and blocking them would break the page.
 | `/accounts/password/reset/` | `allow` | Needed to recover |
 | `/auth_platform/`, `/auth_platform/codeentry/` | `allow` | Login and 2FA hand-off. Required: M0 showed a 2FA login goes through both |
 | `/accounts/two_factor/`, `/challenge/` | `allow` | Needed to pass Instagram's own checks |
+| `/consent/` | `allow` | Cookie consent interstitial, shown once. Observed on a cold start (2026-11-23); blocking it leaves a blank page |
 | `/accounts/signup/`, `/accounts/emailsignup/` | `block` | Account creation is out of scope |
 | `/accounts/edit/`, `/accounts/logout/` | `block` | Profile editing and IG-initiated logout |
 | `/reel/<code>/`, `/reels/<code>/` | conditional | Single-item mode only, see §5 |
@@ -170,6 +174,23 @@ cannot show the user a surface, so blocking them would break Instagram (login
 and media playback in particular) without adding protection.
 
 The rule is enforced in all three layers; see `PROGRESS.md` §9.
+
+### 4.7 Surfaces with no URL
+
+Instagram renders a few surfaces without changing the address. UrlPolicy is
+blind to them by construction:
+
+- the in-DM reel viewer (§5);
+- the sign-up flow opened from the login page's "Create new account" control.
+
+The sign-up control is a `div[role="button"]` with a React handler; the address
+stays on `/accounts/login/` and no history entry is created (verified
+2026-11-23). The in-page guard refuses the control on click, Enter and
+pointer-down, using its `aria-label`. If the sign-up surface appears anyway, a
+load-time backstop reloads the login page.
+
+This is **best effort**, like the reel guard. Sign-up remains out of scope
+(§4.5), and the URL rules still cover every address that exists.
 
 ---
 
@@ -320,10 +341,10 @@ What is hidden in v1:
 
 | Element | Treatment |
 | --- | --- |
-| Global bottom nav | Not needed: never rendered on DM pages; blocked by URL policy on the feed |
+| Global bottom nav | **Hidden structurally where it renders.** DM pages never render it; the standalone post page (`/p/<code>/`) does. It has no semantic attribute, so `guard_load.js` finds the fixed wrapper around its `/explore/` and `/reels/` links and hides that wrapper. UrlPolicy already refuses those destinations |
 | Stories tray / story rings | Hide where present; not observed on DM pages in M0 |
 | "New message" pencil (`a[href$="/direct/new/"]`) | **Hidden.** The composer is deliberately blocked (§4.5); leaving a button that always refuses is a dead end |
-| "Open in app" banners and install prompts | Hide where present; not observed on DM pages in M0 |
+| "Open in app" banners and install prompts | Hidden structurally where present (the post page renders a "Use the app" banner) |
 | Cookie consent | Shown once, never auto-accepted; hidden after the user answers |
 | Notes tray and call buttons | **Left visible** (explicit product decision) |
 | Sender avatars / profile links | Left visible; navigation is blocked by `UrlPolicy` |
@@ -356,8 +377,9 @@ from a DM changes the URL. Findings recorded in `PROGRESS.md`.
 
 ### M1 — Skeleton and pure core
 
-Project structure, `UrlPolicy`, `InstagramRoutes`, `ReelLink`, and their tests.
-No WebView behavior yet.
+Project structure, `UrlPolicy`, `InstagramRoutes`, and their tests. The
+`ReelLink` / shortcode parser planned here was dropped in M5: the in-DM viewer
+has no permalink. No WebView behavior yet.
 
 **Acceptance:** `flutter analyze` clean; `flutter test` covers every row of §4.3
 including near-miss URLs; no Flutter imports inside `lib/navigation/`.
@@ -396,11 +418,13 @@ completely; `PROGRESS.md` records whichever Mode A guarantees did not hold.
 
 ### M6 — Settings, debug, polish
 
-Settings persistence, debug screen, app label and icon, release manifest
-permissions, release build smoke test.
+Settings persistence, debug screen, app label, release manifest permissions,
+release build smoke test.
 
-**Acceptance:** a release build runs the same checklist; debug screen is absent
-from release; `INTERNET` permission present in the merged release manifest.
+**Acceptance:** a release build runs the manual checklist §10.5; debug screen is
+absent from release; `INTERNET` permission present in the merged release
+manifest; the reels choice survives a cold start; the app label reads
+"Minimal Instagram".
 
 ### M7 — Automated regression
 
@@ -441,14 +465,24 @@ complete. Real Instagram is manual-only because it requires a login.
 - [ ] Thread shows no top-level feed icons in the app bar area
 - [ ] Debug → Sanitizer reports `styleInjected: true` and lists the stylesheet's
       selectors with their match counts (a count of 0 is normal on a page that
-      has no such element; -1 means an invalid selector)
+      has no such element; -1 means an invalid selector), plus `chromeHidden`
+      (0 on DM pages, 2 on a post page with the tab bar and install banner)
 
 ### 10.3 Session (M4)
 
-- [ ] Log in with username + password; 2FA works if enabled
-- [ ] Kill the app from the task switcher, relaunch: still logged in, on inbox
-- [ ] Clear session returns to login and does not keep the old page in history
+- [x] Log in with username + password; 2FA works if enabled
+- [x] Kill the app from the task switcher, relaunch: still logged in, on inbox
+- [x] Clear session returns to login and does not keep the old page in history
 - [ ] An expired session lands on login without a crash or redirect loop
+
+The clear-session path was walked on 2026-11-23. Two details belong in the
+record: after clearing, Instagram first shows its cookie-consent page again
+(cookies were deleted), and declining it lands on the login page. Pressing back
+from login does not reveal the old thread (history was cleared); it reloads the
+login page. A cold restart stays on login.
+
+Expiry was not observed in a real session; the code path is unit-visible but the
+device checklist item stays open until it happens or is simulated deliberately.
 
 ### 10.4 Single item (M5)
 
@@ -458,14 +492,38 @@ complete. Real Instagram is manual-only because it requires a login.
 - [x] The "Single reel · Close" banner appears over the viewer
 - [x] Closing returns to the same thread (scroll position resets to the bottom)
 - [x] Android back while the reel is open leaves the reel, not the thread
-- [ ] Keyboard/media "next" affordances are absent or inert
+- [x] Keyboard/media "next" affordances are absent or inert
 - [ ] Open a post from a DM: it is visible and does not open a feed
 - [x] Mode B: tapping a reel shows a notice and nothing opens
-- [ ] The app is not stuck in focus mode after a network error or
+- [x] The app is not stuck in focus mode after a network error or
       background/foreground cycle
 
-Checked items were walked on `emulator-5554` on 2026-11-18. The unchecked items
-are the remaining M5 work; see `PROGRESS.md` §11.
+Checked items were walked on `emulator-5554` on 2026-11-18 and 2026-11-23.
+"Keyboard/media next" was checked by sending `KEYCODE_MEDIA_NEXT`,
+`KEYCODE_DPAD_DOWN` and `KEYCODE_PAGE_DOWN` while a reel was open: the reel did
+not change and the viewer stayed open.
+
+The post item is still open because the test thread has no post attachment. A
+standalone `/p/<code>/` page was verified separately: it renders as a single
+"Post" view with no feed, and the global tab bar and install banner are now
+hidden (sanitizer v2). The DM-attachment path itself has not been walked.
+
+### 10.5 Release build (M6)
+
+- [x] `flutter build apk --release` succeeds
+- [x] The APK installs on a clean emulator; the launcher label reads
+      "Minimal Instagram"
+- [x] Cold start reaches Instagram (proves `INTERNET` is in the release manifest)
+- [x] No debug button and no guard/sanitizer screens in the release build
+- [x] A blocked route shows "Not available in Minimal Instagram"
+- [x] Tapping "Create new account" on the login page stays on the login page
+- [x] Settings → Reels choice survives a cold restart
+- [x] Clear session from the release build returns to the login page
+
+Checked on device on 2026-11-23; see `PROGRESS.md` §14. The first run failed the
+"Create new account" item: the sign-up flow is rendered client-side with no URL
+and slipped past the URL layers. It is now refused by the in-page guard, with a
+reload backstop.
 
 ---
 
@@ -474,7 +532,11 @@ are the remaining M5 work; see `PROGRESS.md` §11.
 1. **Reels focus mode is best effort** (§5.3). The viewer has no URL of its own,
    so it cannot be regulated by the route policy at all. Mode B exists for this
    reason.
-2. **DOM-dependent hiding breaks when Instagram ships a redesign.** The app stays
+2. **The client-side sign-up flow is blocked best-effort** (§4.7). It renders
+   inside the login page without a URL; the app refuses its labelled controls and
+   reloads if the surface still appears. A changed label or marker can defeat the
+   DOM layer.
+3. **DOM-dependent hiding breaks when Instagram ships a redesign.** The app stays
    usable; some chrome may reappear until selectors are updated.
 3. **Google and Facebook login do not work** inside a WebView.
 4. **Instagram may challenge an unfamiliar login.** This is Instagram's security

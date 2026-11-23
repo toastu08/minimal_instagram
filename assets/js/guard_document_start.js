@@ -126,6 +126,47 @@
 
   // --------------------------------------------------------------- the guard
 
+  // Labels of Instagram controls that open a surface this app must not show.
+  // Matched against `aria-label` first, then the element's own short text, both
+  // case-insensitively and exactly. Kept deliberately small: a broad text match
+  // would break ordinary buttons such as Follow or Send.
+  //
+  // Sign-up is the only observed case. It is rendered client-side on the login
+  // page with no URL, so the URL rules cannot stop it (2026-11-23).
+  var FORBIDDEN_LABELS = [
+    'create new account',
+    'create account',
+    'sign up',
+    'sign up with email'
+  ];
+
+  function controlLabel(el) {
+    var aria = el.getAttribute && el.getAttribute('aria-label');
+    if (aria) return aria.trim().toLowerCase();
+    var text = (el.textContent || '').trim().toLowerCase();
+    return text.length > 0 && text.length <= 40 ? text : '';
+  }
+
+  // Walks up from the click target to the nearest button-like control and
+  // returns it when its label is forbidden. The observed sign-up control sits
+  // seven levels above the span that receives the tap, so the walk must be deep
+  // enough; 12 is cheap and still bounded.
+  function forbiddenControl(target) {
+    var el = target;
+    for (var depth = 0; el && el !== document && depth < 12; depth++) {
+      if (el.nodeType === 1) {
+        var tag = el.tagName;
+        var role = el.getAttribute('role');
+        if (tag === 'BUTTON' || tag === 'A' || role === 'button') {
+          var label = controlLabel(el);
+          if (label && FORBIDDEN_LABELS.indexOf(label) !== -1) return el;
+        }
+      }
+      el = el.parentElement;
+    }
+    return null;
+  }
+
   // Vetoing a pushState leaves the DOM untouched, so there is nothing to undo.
   function guardHistory() {
     var methods = ['pushState', 'replaceState'];
@@ -161,6 +202,18 @@
 
   // Capture-phase click interception: React never sees a blocked click.
   document.addEventListener('click', function (event) {
+    // Instagram renders some surfaces with a `div[role="button"]` and a React
+    // handler; the URL never changes. The observed case is the sign-up entry on
+    // the login page ("Create new account", 2026-11-23). URLPolicy cannot see
+    // it, so the control itself is refused before React's handler runs.
+    var forbidden = forbiddenControl(event.target);
+    if (forbidden) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      report('/accounts/emailsignup/', 'block', 'surface');
+      return;
+    }
+
     var el = event.target;
     while (el && el !== document && el.tagName !== 'A') {
       el = el.parentElement;
@@ -180,6 +233,36 @@
     event.stopPropagation();
     report(href, verdict, 'click');
   }, true);
+
+  // Keyboard activation reaches a `role="button"` div without a click event.
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    var forbidden = forbiddenControl(event.target);
+    if (!forbidden) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    report('/accounts/emailsignup/', 'block', 'surface');
+  }, true);
+
+  // Some BLOKS controls act on a press event handled at window level, which
+  // runs before a document-level capture listener. Refuse the press on `window`
+  // so the surface never renders; the backstop in guard_load.js covers anything
+  // that still slips through.
+  var PRESS_EVENTS = [
+    'pointerdown', 'pointerup',
+    'mousedown', 'mouseup',
+    'touchstart', 'touchend'
+  ];
+  function blockForbiddenPress(event) {
+    var forbidden = forbiddenControl(event.target);
+    if (!forbidden) return;
+    if (event.cancelable) event.preventDefault();
+    event.stopImmediatePropagation();
+    report('/accounts/emailsignup/', 'block', 'surface');
+  }
+  for (var p = 0; p < PRESS_EVENTS.length; p++) {
+    window.addEventListener(PRESS_EVENTS[p], blockForbiddenPress, true);
+  }
 
   // New windows are never part of this app.
   window.open = function () {

@@ -1,5 +1,5 @@
 name: minimal_instagram
-description: "A new Flutter project."
+description: "Messages-only viewer for Instagram. Unofficial; handles no credentials."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -39,6 +39,11 @@ dependencies:
   # the first release that works with Flutter 3.47's default toolchain.
   # Revisit when a 6.2.x stable ships. See PROGRESS.md for the full reasoning.
   flutter_inappwebview: 6.2.0-beta.3
+  # One boolean (block reels) is the only thing stored. Chosen over a custom
+  # platform channel because Android's app-data directory is not reachable from
+  # Dart without another plugin; justification recorded in PROGRESS.md §14.
+  # Nothing about the user or the session is ever stored here.
+  shared_preferences: ^2.5.6
 dev_dependencies:
   flutter_test:
     sdk: flutter

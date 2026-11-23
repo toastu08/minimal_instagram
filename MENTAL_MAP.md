@@ -147,12 +147,34 @@ remembers you between launches, and every attempt to reach the feed, explore, a
 profile, settings or another app is stopped. This has all been tested by hand on
 a real phone-sized screen.
 
-The Decorator has started work. It hides Instagram's "new message" pencil, because
-writing to someone new is deliberately out of scope; leaving a button that always
-refuses would be a dead end. Everything else on the messages screens is untouched.
+The Decorator hides Instagram's "new message" pencil, because writing to someone
+new is deliberately out of scope; leaving a button that always refuses would be a
+dead end. Everything else on the messages screens is untouched.
 
-The reel work — the spotter, the collapse and the freeze — is the next big piece.
-Until it is done, a shared reel opens the normal Instagram viewer, and the safe
-fallback setting is the honest answer. `PROGRESS.md` has the current status in
-engineering terms. This document will be updated as each piece becomes real, and
-this section should never be more than one step out of date.
+The reel work is now live in its default shape. A reel shared in a conversation
+opens on its own, with a small "Single reel" strip and a Close button. Swiping no
+longer carries you to the next reel or throws you out of the viewer. Close, or
+the phone's back button, puts you back in the conversation. The settings screen
+also offers a strict mode, called **Block reels**, in which a shared reel simply
+refuses to open and says so. That choice is remembered after the app is closed.
+
+The sign-up door is shut as well. Instagram draws its "Create new account" flow
+inside the sign-in page, without giving it an address the Doorman could check.
+The app refuses the button itself and, if the flow still manages to appear,
+returns you to the sign-in page. This is a strong deterrent, not a promise: it
+depends on Instagram's labels, and a redesign could weaken it.
+
+Two honest notes. First, both the reel viewer and the sign-up flow belong to
+Instagram and have no address of their own; the app's grip on them is strong but
+not a guarantee, which is why the strict reel mode and the sign-up backstop
+exist. Second, the settings screen can sign you out and wipe this app's Instagram
+data; that has now been tested by hand, including a fresh launch afterwards. The
+app is currently left signed out, ready for you to sign in again.
+
+`PROGRESS.md` has the current status in engineering terms. This document will be
+updated as each piece becomes real, and this section should never be more than
+one step out of date.
+
+`PROGRESS.md` has the current status in engineering terms. This document will be
+updated as each piece becomes real, and this section should never be more than
+one step out of date.

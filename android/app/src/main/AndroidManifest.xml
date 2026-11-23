@@ -1,8 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The WebView loads Instagram, so release builds need this too. Before M6
+         it only existed in the debug/profile manifests, which made every
+         release build unable to load a page. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="minimal_instagram"
+        android:label="Minimal Instagram"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false">
         <activity
             android:name=".MainActivity"
             android:exported="true"

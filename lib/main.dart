@@ -1,15 +1,17 @@
 // Entry point.
 //
-// Kept to the absolute minimum: Flutter setup, WebView debugging in debug
-// builds, then hand over to the app. No business logic belongs here.
+// Kept to the absolute minimum: Flutter setup, persisted settings, WebView
+// debugging in debug builds, then hand over to the app. No business logic
+// belongs here.
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import 'app.dart';
+import 'core/settings/app_settings.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Lets `chrome://inspect` on the host machine attach to the WebView. Debug
@@ -18,5 +20,10 @@ void main() {
     InAppWebViewController.setWebContentsDebuggingEnabled(true);
   }
 
-  runApp(const MinimalInstagramApp());
+  // Loaded before `runApp` so the very first document is guarded with the
+  // user's chosen reel mode. A slow read is still better than a flash of the
+  // wrong rules.
+  final AppSettings settings = await AppSettings.load();
+
+  runApp(MinimalInstagramApp(settings: settings));
 }

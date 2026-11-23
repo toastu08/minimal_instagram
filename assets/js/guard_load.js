@@ -27,6 +27,8 @@
   // script keeps its own private copy; this module reads the global.
   var RULES = window.__MI_RULES || {};
   var STYLE_ID = 'mi-sanitizer';
+  // Marks chrome hidden by `hideGlobalChrome`; also used by the debug report.
+  var CHROME_FLAG = 'data-mi-chrome-hidden';
 
   // Nodes that must be *removed* rather than hidden. Empty in v1: everything
   // the sanitizer needs to do today is expressible in CSS. Add an entry here
@@ -107,7 +109,8 @@
       url: String(window.location.href),
       styleInjected: !!document.getElementById(STYLE_ID),
       rules: rules,
-      removals: REMOVALS.slice()
+      removals: REMOVALS.slice(),
+      chromeHidden: document.querySelectorAll('[' + CHROME_FLAG + ']').length
     };
   }
 
@@ -125,6 +128,8 @@
     for (var i = 0; i < batch.length; i++) {
       applyRemovals(batch[i]);
     }
+    hideGlobalChrome();
+    escapeSignupSurface();
   }
 
   function onMutations(mutations) {
@@ -158,11 +163,15 @@
 
   ensureStyle();
   applyRemovals(document);
+  hideGlobalChrome();
+  escapeSignupSurface();
   observe();
 
   document.addEventListener('DOMContentLoaded', function () {
     ensureStyle();
     applyRemovals(document);
+    hideGlobalChrome();
+    escapeSignupSurface();
     observe();
   });
 
@@ -170,9 +179,118 @@
   window.addEventListener('pageshow', function () {
     ensureStyle();
     applyRemovals(document);
+    hideGlobalChrome();
+    escapeSignupSurface();
   });
 
+  // Instagram can swap chrome without adding a node the observer sees. The
+  // chrome check is two small queries; the sign-up check runs more often because
+  // it is the only defense against a surface with no URL.
+  setInterval(hideGlobalChrome, 1500);
+  setInterval(escapeSignupSurface, 500);
+
   window.__miSanitizerReport = report;
+
+  // ------------------------------------------------------------ global chrome
+  //
+  // The standalone post page (`/p/<code>/`) renders Instagram's global bottom
+  // tab bar (Home / Explore / Reels / Messages) and a "Use the app" install
+  // banner. Neither has a semantic attribute the stylesheet could target, and a
+  // `:has()` selector would match ancestors all the way up to <body>, hiding the
+  // whole app. They are therefore hidden structurally: find a known link or
+  // label, walk up to its fixed-position wrapper, hide that wrapper.
+  //
+  // Purely cosmetic. If Instagram restructures these nodes, nothing is hidden and
+  // the page still works; UrlPolicy still refuses every destination.
+
+  function fixedAncestor(start, maxHeight) {
+    var el = start;
+    for (var depth = 0; el && el !== document.body && depth < 12; depth++) {
+      try {
+        if (window.getComputedStyle(el).position === 'fixed') {
+          var rect = el.getBoundingClientRect();
+          if (rect.height > 0 && rect.height <= maxHeight) return el;
+        }
+      } catch (e) { /* detached while walking */ }
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  function hideChromeNode(node) {
+    if (!node || node.nodeType !== 1) return;
+    try {
+      node.setAttribute(CHROME_FLAG, '1');
+      node.style.setProperty('display', 'none', 'important');
+    } catch (e) { /* detached mid-iteration */ }
+  }
+
+  function hideGlobalChrome() {
+    try {
+      // The tab bar is the fixed wrapper around links to blocked feed routes.
+      // DM pages have no /explore/ or /reels/ links, so this never touches the
+      // DM top bar.
+      var links = document.querySelectorAll(
+        'a[href="/explore/"], a[href="/reels/"]'
+      );
+      for (var i = 0; i < links.length; i++) {
+        var bar = fixedAncestor(links[i], 180);
+        if (bar) hideChromeNode(bar);
+      }
+
+      // The install banner is a button whose whole label is the prompt. Once its
+      // wrapper is hidden the button measures zero height, so check for an
+      // already-hidden ancestor instead of hiding the button a second time.
+      var buttons = document.querySelectorAll('button');
+      for (var j = 0; j < buttons.length; j++) {
+        if ((buttons[j].textContent || '').trim() !== 'Use the app') continue;
+        if (buttons[j].closest('[' + CHROME_FLAG + ']')) continue;
+        hideChromeNode(fixedAncestor(buttons[j], 220) || buttons[j]);
+      }
+    } catch (e) { /* cosmetic only */ }
+  }
+
+  // ------------------------------------------------------- client-side surfaces
+  //
+  // Instagram renders its sign-up flow *inside* the login page: the URL never
+  // changes, history does not change, and no navigation callback fires
+  // (verified 2026-11-23). UrlPolicy therefore cannot see it at all.
+  //
+  // The document-start guard refuses the visible entry controls. This is the
+  // backstop for any other way in (programmatic click, a restyled control, a
+  // future entry point): on the login page, if the sign-up markers appear,
+  // reload. Reloading the login URL is an allowed navigation and returns the
+  // sign-in form. Sign-up is out of scope (SPEC §4.5).
+  var SIGNUP_MARKERS =
+    'input[type="tel"][aria-label="Mobile Number"], ' +
+    'button[aria-label="Sign up with email"]';
+  var lastSurfaceEscape = 0;
+
+  function reportSurface(route) {
+    try {
+      if (window.flutter_inappwebview &&
+          window.flutter_inappwebview.callHandler) {
+        window.flutter_inappwebview.callHandler(
+          'miNavigationBlocked', route, 'block', 'surface'
+        );
+      }
+    } catch (e) { /* the bridge can die on navigation */ }
+  }
+
+  function escapeSignupSurface() {
+    try {
+      if (!/^\/accounts\/login/.test(window.location.pathname)) return;
+      if (!document.querySelector(SIGNUP_MARKERS)) return;
+
+      var now = Date.now();
+      // One reload per 5 s is enough; do not fight the page in a loop.
+      if (now - lastSurfaceEscape < 5000) return;
+      lastSurfaceEscape = now;
+      console.warn('[mi-guard] sign-up surface rendered without a URL; reloading login');
+      reportSurface('/accounts/emailsignup/');
+      window.location.reload();
+    } catch (e) { /* never break the page */ }
+  }
 
   // --------------------------------------------------------------- reel guard
   //

@@ -57,6 +57,12 @@ bug, regardless of how good the reason sounds.
    when the selector stops matching. Never let a cosmetic failure crash the app
    or leave the user on a blocked surface.
 
+   Two surfaces have **no URL at all**: the in-DM reel viewer and the
+   client-side sign-up flow (`SPEC.md` §4.7). For those the DOM guard is the only
+   defense, and it is best effort exactly like the reel guard. The URL policy
+   still governs every address that exists; say so honestly, never claim the DOM
+   gives a guarantee.
+
 8. **The reels guard is best effort.** Never describe it as guaranteed. Never
    remove the `block` fallback mode. The in-DM reel viewer has no URL, so it
    cannot be regulated by `UrlPolicy` at all — it is detected and frozen inside
@@ -68,23 +74,22 @@ bug, regardless of how good the reason sounds.
 
 ```
 lib/
-  main.dart                     bootstrap only: runApp + platform flags
+  main.dart                     bootstrap: settings load + runApp + platform flags
   app.dart                      MaterialApp, theme, route to the browser screen
-  core/config/app_config.dart   constants + compile-time flags (dart-define)
+  core/config/app_config.dart   constants: user agent, start URL, version
+  core/settings/app_settings.dart persisted reels choice (the only stored state)
   core/logging/guard_log.dart   in-memory ring buffer of allow/block decisions
   navigation/
     url_policy.dart             PURE DART. classify(Uri) -> UrlDecision
     instagram_routes.dart       route constants and URL builders
   webview/
-    browser_screen.dart         the WebView host and app chrome
-    browser_controller.dart     wires WebView callbacks to UrlPolicy
-    webview_settings.dart       settings factories (normal / focus mode)
-    reel_guard.dart             detects and freezes the in-page reel viewer
-  ui/                           debug, settings, common widgets
+    browser_screen.dart         the WebView host, enforcement wiring, chrome
+    webview_settings.dart       the single InAppWebViewSettings factory
+  ui/                           settings sheet, debug screen, common widgets
 assets/
   css/hide_instagram_chrome.css every selector lives here, nowhere else
-  js/guard_document_start.js    history patch + click interception
-  js/guard_load.js              sanitizer, MutationObserver, reel guard
+  js/guard_document_start.js    history patch, anchor + URL-less control blocking
+  js/guard_load.js              sanitizer, chrome hide, reel guard, surface backstop
   test_site/                    fake Instagram pages for automated tests
 ```
 
@@ -147,7 +152,7 @@ Three layers, all must pass before a milestone is called complete:
 
 | Layer | What it covers | Command |
 | --- | --- | --- |
-| Unit | `UrlPolicy`, `ReelLink`, route builders. Fast, no device. | `flutter test` |
+| Unit | `UrlPolicy`, route builders, settings, version. Fast, no device. | `flutter test` |
 | Widget | Shell chrome, blocked notice, error view, back-button policy. | `flutter test` |
 | On-device | Real Instagram behavior, reel focus mode, session persistence. | `flutter run` on the emulator, manual checklist in `SPEC.md` |
 
