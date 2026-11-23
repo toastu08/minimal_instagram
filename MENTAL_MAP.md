@@ -168,12 +168,16 @@ Two honest notes. First, both the reel viewer and the sign-up flow belong to
 Instagram and have no address of their own; the app's grip on them is strong but
 not a guarantee, which is why the strict reel mode and the sign-up backstop
 exist. Second, the settings screen can sign you out and wipe this app's Instagram
-data; that has now been tested by hand, including a fresh launch afterwards. The
-app is currently left signed out, ready for you to sign in again.
+data; that has been tested by hand, including a fresh launch afterwards. After
+clearing, the app is left signed out, ready for you to sign in again.
 
-`PROGRESS.md` has the current status in engineering terms. This document will be
-updated as each piece becomes real, and this section should never be more than
-one step out of date.
+Signing in from the signed-out screen now ends in your messages. It did not
+before: while signing in, Instagram briefly visits a page whose address changed
+since the app was first built, and the Doorman stopped it, so the sign-in was
+thrown back to the start. That whole family of Instagram sign-in pages is now
+let through, and the route has been walked by hand, from the signed-out screen to
+the messages list, including closing and reopening the app. The engineering notes
+in `PROGRESS.md` record exactly what changed.
 
 `PROGRESS.md` has the current status in engineering terms. This document will be
 updated as each piece becomes real, and this section should never be more than

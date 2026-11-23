@@ -4,10 +4,18 @@ State of the project for whoever picks this up next. Read this first, then
 `SPEC.md` for intended behavior and `AGENTS.md` for rules.
 
 **Last updated:** 2026-11-23
-**Current milestone:** M6 complete; M7 (local fixture site + integration tests) next
-**Next action:** build `assets/test_site/` and the `InAppLocalhostServer` integration
-tests. Also worth a fixture: a fake login page with a `role="button"` sign-up
-control, to pin the client-side surface guard. See §14 for the M6 record.
+**Current milestone:** M7 complete. Every milestone in `SPEC.md` §9 is delivered:
+M0–M7, with B1 (sign-in from a signed-out state, §15) fixed and verified on
+device.
+**Next action:** none scheduled. Before a release, walk the manual checklists in
+`SPEC.md` §10 on real Instagram again — the fixture tests (§16) prove the wiring,
+not Instagram's current DOM. The two open checklist items are post-from-DM
+(untested: the test thread has no post) and a simulated session expiry.
+
+> **Bugs are expected.** A green test suite and a walked checklist only cover the
+> paths someone actually exercised. A change that passes its own milestone can
+> still break a flow that nobody re-ran. Every open bug gets an entry in §15; a
+> fix is not done until the entry records the cause and the verification.
 
 ---
 
@@ -22,7 +30,9 @@ control, to pin the client-side surface guard. See §14 for the M6 record.
 | M4 Login + session | **Done** | Settings, clear-session control, expiry notice, 3 widget tests. Destructive path walked 2026-11-23 (§9) |
 | M5 Single-item focus | **Done** | Reel guard and Mode B verified on device; post-from-DM path untested (no post in the test thread). See §11 |
 | M6 Settings/debug | **Done** | Persisted reels toggle, version, release manifest, release smoke test. See §14 |
-| M7 Regression tests | Next | |
+| M7 Regression tests | **Done** | Fixture site + 8 on-device integration tests. See §16 |
+
+**Open bugs:** none. B1 (§15) was fixed and verified on device on 2026-11-23.
 
 ---
 
@@ -282,7 +292,7 @@ Only semantic attributes. Never generated classes.
 - **Three enforcement layers are live** (see §9): native `shouldOverrideUrlLoading`,
   `onUpdateVisitedHistory` backstop, and a document-start JS guard whose rules are
   generated from `UrlPolicy` (verified: the debug screen reports `IN SYNC`).
-- **`UrlPolicy` is complete and tested**: 65 unit tests cover every route in
+- **`UrlPolicy` is complete and tested**: unit tests cover every route in
   `SPEC.md` §4.3, the redirects, the reel/post modes, non-http schemes, host
   spoofing, ports and path traversal. Deny-by-default is enforced.
 - **The sanitizer is live.** A v1 stylesheet is injected at document start and
@@ -310,7 +320,12 @@ Only semantic attributes. Never generated classes.
   `/reels/`, profiles, `/accounts/edit/`, `https://example.com/` blocked,
   `instagram://` cancelled silently, `/` redirected to the inbox, thread open
   and back, reload preserves the page, back from inbox exits the app.
-- `flutter analyze` is clean and `flutter test` is green (85 tests).
+- **The guards are covered by on-device fixture tests** (M7, §16): 8 integration
+  tests run the real `BrowserScreen` wiring against `assets/test_site/`, covering
+  an allowed page, blocked click, vetoed history change, native-load recovery,
+  the sign-up click veto, the sign-up reload backstop, and both reel modes.
+- `flutter analyze` is clean, `flutter test` is green (100 tests) and
+  `flutter test integration_test -d emulator-5554` is green (8 tests).
 
 ## 6. What does not work / does not exist yet
 
@@ -321,9 +336,9 @@ Only semantic attributes. Never generated classes.
   the checklist item stays open until a real expiry happens.
 - **The client-side sign-up flow is a best-effort block**, not a guarantee
   (§4.7). Its labels and DOM markers can change.
-- **`assets/test_site/` does not exist yet (M7).** Widget tests cover the
-  settings sheet; the browser screen has no widget test, and the JS guards have
-  no fixture-driven integration tests.
+- **The fixture site is a model, not Instagram.** It proves the wiring behaves
+  as designed; it cannot prove that Instagram's current DOM or URLs still match
+  the selectors and rules. Real-server behavior stays manual (§10 checklists).
 - The M0 probe data is from one session on one account; treat it as a snapshot,
   not a contract.
 
@@ -819,3 +834,201 @@ M7: `assets/test_site/` served by `InAppLocalhostServer`, integration tests that
 exercise blocking without a login, and a home for the JS guard tests. The
 client-side sign-up guard is a good first fixture: a fake login page with a
 `role="button"` that renders a fake sign-up surface would pin the behavior.
+
+---
+
+## 15. Open bugs
+
+Bugs are expected, not exceptional. A milestone checklist only covers the paths
+that were walked; a later change can regress a flow nobody re-ran. Every open bug
+gets an entry here, written so the next agent can resume without context. When it
+is fixed, keep the entry, mark it **FIXED**, and record the cause, the fix and how
+it was verified.
+
+### B1 — Signing in from a signed-out state bounces back to login (2026-11-23, FIXED 2026-11-23)
+
+**Symptom.** From a signed-out state, the user signs in with the test account.
+The credentials are accepted, but when the app navigates towards the messages
+section it shows the "Not available in Minimal Instagram" notice and the login
+page stays on screen. A cold start is signed out again (no usable session).
+
+**Why this slipped through.** Every device test in M5 and M6 started from an
+already-signed-in session. M4's destructive test cleared the session and stopped
+at the login page without signing back in. The automated tests do not touch real
+Instagram at all. So `signed out -> sign in -> inbox` has not been walked since
+M0, before the M6 sign-up guard and the `/consent` rule existed. This is the
+first reported bug of that kind; assume other untested transitions can be broken
+too.
+
+**Expected behavior.** Sign in from the login page, land on
+`/direct/inbox/`, and use the app normally. The session must survive a restart,
+as described in `SPEC.md` §10.3.
+
+**What is already ruled out (2026-11-23):**
+
+- `/direct/inbox` and `/direct/inbox/` are allowed by `UrlPolicy`; both sides
+  are covered by unit tests.
+- `/accounts/login`, `/auth_platform`, `/auth_platform/codeentry`,
+  `/accounts/onetap`, `/accounts/two_factor`, `/challenge...` and `/consent` are
+  allowed.
+- Loading `https://www.instagram.com/direct/inbox/` while signed out reaches
+  Instagram and redirects to login, so the app does not block the inbox URL by
+  itself.
+- Tapping "Log in" with empty fields does not trip the sign-up control guard.
+- The M6 sign-up guard's markers (`input[type="tel"][aria-label="Mobile Number"]`,
+  `button[aria-label="Sign up with email"]`) are absent from the current login
+  page, so the backstop should not be reloading it.
+
+**Cause.** The logcat capture of the failed attempt showed the login chain, and
+the last step was blocked:
+
+```
+[mi-guard] navigation allow https://www.instagram.com/auth_platform/?apc=…&deoia=1
+[mi-guard] navigation block https://www.instagram.com/auth_platform/afad/?apc=…&deoia=1
+```
+
+`UrlPolicy` allowed `/auth_platform` and `/auth_platform/codeentry` as exact
+paths, on the M0 observation that the 2FA step lived at `codeentry`. Instagram
+renamed that sub-route; on 2026-11-23 the 2FA handoff is `/auth_platform/afad/`.
+Deny-by-default cancelled the handoff, the app showed the blocked notice, and
+Instagram fell back to `/accounts/login/?next=…/direct/inbox/…`, which is why the
+login page reappeared and no session was established.
+
+This was suspect 1 in the original list: a URL in the post-login redirect chain
+that was not in the allowlist.
+
+**Fix.** `/auth_platform/` is allowed as a **prefix**, the same way `/challenge/`
+already is, because every sub-route under it is a step of signing in and
+Instagram renames them. Changes:
+
+- `lib/navigation/url_policy.dart`: `_authPlatformPrefix = '/auth_platform'`,
+  matched with `path == prefix || path.startsWith('$prefix/')`; the two exact
+  paths are removed from `_allowedPaths`. `toGuardRulesJson()` emits
+  `authPlatformPrefix`.
+- `assets/js/guard_document_start.js`: mirrors the prefix, read from that JSON,
+  with the same fallback (`|| '/auth_platform'`).
+- `test/url_policy_test.dart`: `/auth_platform/afad/?apc=…` is allowed;
+  `auth_platform.evil/` and `auth_platformx/` are blocked (near-misses); the
+  guard-JSON test now asserts the prefix.
+- `SPEC.md` §4.3 route table and §10.3 checklist updated.
+
+This is a narrow path prefix on the Instagram host, not a wildcard over
+`instagram.com/*` or `/direct/*`.
+
+**Verification (device, 2026-11-23).** Debug build reinstalled, session cleared,
+signed in with the test account. Capture (`/tmp/opencode/b1fix_capture.log`,
+since deleted with the temp dir):
+
+```
+18:06:38 navigation allow /auth_platform/?apc=…          -- auth platform handoff
+18:06:41 navigation allow /auth_platform/afad/?apc=…
+18:07:31 navigation allow /direct/inbox/?__coig_login=1&deoia=1
+18:07:31 load       allow /direct/inbox/?__coig_login=1&deoia=1
+```
+
+No `navigation block` lines in the whole capture. The inbox rendered, a profile
+link (`/toastu_/`) and a `history` redirect to `/` were blocked as designed, and
+then the app was killed and cold-started again (new process, `18:09:38`) which
+loaded `/direct/inbox/` directly — the session survived the restart, so the
+"cold start is signed out again" half of the symptom is gone too.
+
+`flutter analyze` clean; 89 tests pass.
+
+**Status:** fixed and verified end to end on the emulator, including a cold
+restart. Keep the entry as the record of the first state transition that was not
+covered by a checklist item.
+
+**Reproducing a blocked URL in future.** Run `flutter run -d emulator-5554`; the
+debug build writes `[mi-guard]` lines to logcat (`adb logcat -s flutter chromium`)
+and mirrors them to the Debug screen's guard log. A block line names the URL, the
+verdict, the reason and the source (`navigation`, `history`, `load`, `click`,
+`surface`, …). Always capture the exact URL before changing the policy.
+
+**Do not** widen the policy to `/direct/*` or `instagram.com/*` to "make it
+work". If a new route is genuinely required, add the narrow path, a unit test for
+it and its near-miss, and document it in `SPEC.md` §4.3.
+
+---
+
+## 16. M7 delivery notes — automated regression (2026-11-23)
+
+M7 replaces "walk it by hand and hope" with an on-device test that drives the
+real `BrowserScreen` against a local fixture site. It never touches Instagram and
+needs no login, so it can run after every change.
+
+### How to run
+
+```bash
+flutter analyze
+flutter test                                       # 100 unit + widget tests
+flutter test integration_test -d emulator-5554     # 8 on-device tests
+```
+
+The integration tests take about 15 s once the debug APK is cached. They build
+and install the app, so keep the emulator running.
+
+### What was added
+
+- `assets/test_site/` — five static pages modelling the surfaces the guards care
+  about: the inbox, a conversation with a shared reel, a blocked Explore page, a
+  login page with a client-side sign-up control, and the sign-up surface itself.
+  Each page carries a `data-test` marker so the test can tell which document is
+  on screen.
+- `integration_test/fixture_site_test.dart` — starts `InAppLocalhostServer` on
+  port 8080 and pumps the real browser widget pointed at it.
+- `UrlPolicy.fixtureSite(port:)` — same route rules, but the only reachable
+  origin is `localhost` on the given port. It is a named constructor, not a
+  parameter on the default one, so production code has no way to widen the host
+  set. `withReelPolicy()` keeps the origin rules when the user flips the setting.
+  `home` is the fixture inbox, so every recovery path (`_loadInbox`, `/` and
+  `/direct` redirects) stays inside the fixture instead of jumping to Instagram.
+- `toGuardRulesJson()` now emits `ports`, and `guard_document_start.js` reads it.
+  The fixture server uses port 8080; without this the in-page guard would refuse
+  its own page as an unexpected port.
+- `BrowserScreen` gained `startUrl`, `policy` and `onControllerReady`. All three
+  default to null, which selects today's production behaviour. They exist so the
+  test can aim the same wiring at the fixture; `app.dart` does not pass them.
+- `android/app/src/debug/AndroidManifest.xml` sets
+  `android:usesCleartextTraffic="true"` so the WebView may open
+  `http://localhost:8080`. Debug-only; the release manifest is untouched and the
+  release policy still cannot reach localhost.
+- `integration_test` added as a dev dependency. It ships with the Flutter SDK, so
+  it does not enlarge the app's dependency surface (AGENTS.md §2.6).
+
+### What the tests prove
+
+| Test | Layer exercised |
+| --- | --- |
+| Inbox loads; new-message pencil hidden | policy allow + sanitizer CSS |
+| Anchor to `/explore/` refused | in-page click guard |
+| `history.pushState` to `/explore/` vetoed | in-page history guard |
+| App-initiated load of `/explore/` recovered | `onLoadStop` last-resort guard |
+| "Create new account" click refused | in-page forbidden-control guard |
+| Sign-up markers trigger a reload | `guard_load.js` surface backstop |
+| Single-reel mode freezes the viewer, Close leaves | reel guard, Mode A |
+| Block-reels mode refuses the viewer | reel guard, Mode B |
+
+Every test polls the live page through the WebView controller, because Flutter
+cannot read or tap a platform view. The helper bounds each poll with a timeout:
+a reload destroys the JavaScript context and `evaluateJavascript` can otherwise
+never answer, which hangs the test rather than failing it. That failure mode cost
+a full debugging round; keep the timeout.
+
+### What it does not prove
+
+- Nothing about Instagram's live DOM, URLs or account flows. Those stay manual
+  (`SPEC.md` §10) because they need a real login.
+- The fixture's reel carousel is shaped like the observed one (a scroll container
+  of slides, only one intersecting the viewport) but is not Instagram's markup.
+  A selector change on the real site is invisible here.
+- The sign-up backstop test uses a fixture-only `?surface=1` switch that injects
+  the real marker attribute once per session. It verifies the reload behaviour;
+  it cannot verify that Instagram still uses that marker.
+
+### Release note
+
+`assets/test_site/` is bundled into release builds as well. It is a few KB of
+static HTML, and it is unreachable: the production policy only allows Instagram's
+hosts, and the in-page rules carry the same host list. If a future release
+trimming pass wants it out, the fixtures can move behind a build flavour, but
+that is not worth a second build configuration today.

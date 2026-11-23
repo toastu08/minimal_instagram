@@ -32,10 +32,12 @@
 
   var allowedPaths = RULES.allowedPaths || [];
   var hosts = RULES.hosts || [];
+  var ports = RULES.ports || [80, 443];
   var threadRe = new RegExp(RULES.threadPattern || '^$');
   var reelRe = new RegExp(RULES.reelPattern || '^$');
   var postRe = new RegExp(RULES.postPattern || '^$');
   var challengePrefix = RULES.challengePrefix || '/challenge';
+  var authPlatformPrefix = RULES.authPlatformPrefix || '/auth_platform';
   var inbox = RULES.inbox || 'https://www.instagram.com/direct/inbox/';
 
   // ---------------------------------------------------------------- decisions
@@ -61,7 +63,7 @@
 
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return 'external';
     if (hosts.indexOf(u.hostname) === -1) return 'block';
-    if (u.port && u.port !== '80' && u.port !== '443') return 'block';
+    if (u.port && ports.indexOf(Number(u.port)) === -1) return 'block';
 
     var path = normalizePath(u.pathname);
 
@@ -69,6 +71,10 @@
     if (allowedPaths.indexOf(path) !== -1) return 'allow';
     if (threadRe.test(path)) return 'allow';
     if (path === challengePrefix || path.indexOf(challengePrefix + '/') === 0) {
+      return 'allow';
+    }
+    if (path === authPlatformPrefix ||
+        path.indexOf(authPlatformPrefix + '/') === 0) {
       return 'allow';
     }
     if (RULES.reelPolicy === 'allow' && reelRe.test(path)) return 'allow';
@@ -106,6 +112,12 @@
     } catch (e) {
       absolute = String(url);
     }
+    // Mirror to the browser console so `adb logcat -s chromium` shows the same
+    // decision the bridge sends to Dart. Useful when the bridge is not ready or
+    // the page navigates before the report is delivered.
+    try {
+      console.warn('[mi-guard] ' + source + ' ' + verdict + ' ' + absolute);
+    } catch (e) { /* never let logging break the guard */ }
     if (bridgeReady()) {
       try {
         window.flutter_inappwebview.callHandler(HANDLER, absolute, verdict, source);

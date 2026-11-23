@@ -1,0 +1,38 @@
+<!doctype html>
+<!--
+  Fixture inbox for the automated on-device tests.
+
+  Not a copy of Instagram. It exists so the enforcement layers can be exercised
+  on a device without a login: every link here is one of the cases UrlPolicy,
+  the in-page guard or the sanitizer must handle. The real site is manual-only
+  (AGENTS.md §6).
+
+  `data-test="inbox"` is the marker the integration test waits for.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:," />
+    <title>Fixture inbox</title>
+    <style>
+      body { font-family: sans-serif; margin: 1rem; }
+      li { margin: 0.5rem 0; }
+      a { display: block; padding: 0.5rem; }
+    </style>
+  </head>
+  <body data-test="inbox">
+    <h1>Direct</h1>
+    <ul>
+      <li><a id="thread" href="/direct/t/115950719795361/">roncea_andrei</a></li>
+      <li><a id="requests" href="/direct/requests/">Requests</a></li>
+      <li><a id="explore" href="/explore/">Explore</a></li>
+      <li><a id="reels" href="/reels/">Reels</a></li>
+      <li><a id="profile" href="/toastu_/">Profile</a></li>
+      <li><a id="edit" href="/accounts/edit/">Edit profile</a></li>
+      <li><a id="new-message" href="/direct/new/">New message</a></li>
+      <li><a id="external" href="instagram://user?username=toastu_">Open in app</a></li>
+      <li><a id="login" href="/accounts/login/">Sign in</a></li>
+    </ul>
+  </body>
+</html>

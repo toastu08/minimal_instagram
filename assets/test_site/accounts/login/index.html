@@ -1,0 +1,56 @@
+<!doctype html>
+<!--
+  Fixture login page.
+
+  The sign-up flow on Instagram is rendered inside this page: no URL, no
+  history entry. Two behaviours are exercised here:
+
+   1. The click guard must refuse the entry control before the page's own
+      handler runs, which is what `#signup-surface` staying hidden proves.
+   2. `guard_load.js` must reload the page if the surface appears anyway. That
+      is what `?surface=1` simulates: the marker is injected once, `sessionStorage`
+      records it, and the reload comes back without it. The second half matters,
+      because the real page would otherwise reload forever.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:," />
+    <title>Fixture login</title>
+    <style>
+      body { font-family: sans-serif; margin: 1rem; }
+      [role='button'] { padding: 0.75rem; border: 1px solid #888; margin-top: 1rem; }
+      #signup-surface[hidden] { display: none; }
+    </style>
+  </head>
+  <body data-test="login">
+    <h1>Log in</h1>
+    <form onsubmit="return false">
+      <input type="text" aria-label="Username" />
+      <input type="password" aria-label="Password" />
+    </form>
+    <div role="button" aria-label="Create new account" id="signup">
+      Create new account
+    </div>
+    <div id="signup-surface" hidden>Sign up form</div>
+    <script>
+      document.getElementById('signup').addEventListener('click', function () {
+        document.getElementById('signup-surface').hidden = false;
+      });
+
+      // Simulates the client-side sign-up surface appearing. Runs once per
+      // session so the guard's reload lands on a clean page.
+      var SURFACE_KEY = 'mi-fixture-surface';
+      if (window.location.search.indexOf('surface=1') !== -1) {
+        if (!window.sessionStorage.getItem(SURFACE_KEY)) {
+          window.sessionStorage.setItem(SURFACE_KEY, '1');
+          var marker = document.createElement('input');
+          marker.type = 'tel';
+          marker.setAttribute('aria-label', 'Mobile Number');
+          document.body.appendChild(marker);
+        }
+      }
+    </script>
+  </body>
+</html>

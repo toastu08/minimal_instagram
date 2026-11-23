@@ -4,4 +4,11 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- Debug only: the on-device fixture tests (integration_test/) serve
+         assets/test_site/ over http://localhost:8080 with InAppLocalhostServer,
+         and Android refuses cleartext traffic by default. The release manifest
+         is untouched. Production navigation cannot reach localhost anyway: the
+         real UrlPolicy only allows Instagram's hosts. -->
+    <application android:usesCleartextTraffic="true" />
 </manifest>

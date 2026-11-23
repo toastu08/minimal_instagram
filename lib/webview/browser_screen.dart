@@ -33,10 +33,30 @@ import 'webview_settings.dart';
 /// Hosts Instagram and enforces the URL policy.
 class BrowserScreen extends StatefulWidget {
   /// Creates the screen.
-  const BrowserScreen({super.key, required this.settings});
+  ///
+  /// [startUrl], [policy] and [onControllerReady] exist for the automated
+  /// on-device tests in `integration_test/`, which point the same wiring at the
+  /// local fixture site instead of Instagram. The app never sets them: leaving
+  /// them null selects the real inbox and the real policy.
+  const BrowserScreen({
+    super.key,
+    required this.settings,
+    this.startUrl,
+    this.policy,
+    this.onControllerReady,
+  });
 
   /// Persisted preferences, owned by the app root.
   final AppSettings settings;
+
+  /// The first page to load. Null means [AppConfig.startUrl].
+  final Uri? startUrl;
+
+  /// The policy to enforce. Null means one built from [settings].
+  final UrlPolicy? policy;
+
+  /// Called once the WebView exists, so a test can drive the page.
+  final ValueChanged<InAppWebViewController>? onControllerReady;
 
   @override
   State<BrowserScreen> createState() => _BrowserScreenState();
@@ -44,12 +64,38 @@ class BrowserScreen extends StatefulWidget {
 
 class _BrowserScreenState extends State<BrowserScreen> {
   /// The policy in force. Rebuilt when the user changes the reels preference.
-  late UrlPolicy _policy = UrlPolicy(
-    reelPolicy: widget.settings.reelPolicy.value,
-  );
+  late UrlPolicy _policy = _buildPolicy();
+
+  UrlPolicy _buildPolicy() =>
+      widget.policy?.withReelPolicy(widget.settings.reelPolicy.value) ??
+      UrlPolicy(reelPolicy: widget.settings.reelPolicy.value);
 
   /// Shared decision log, read by the debug screen.
   final GuardLog _log = GuardLog(capacity: AppConfig.guardLogCapacity);
+
+  /// Records one guard decision in the ring buffer and, in debug builds, on the
+  /// console.
+  ///
+  /// The console mirror exists because the ring buffer is only reachable from
+  /// the Debug screen. `adb logcat` is the only way to capture the URL behind a
+  /// reported block without asking the user to open that screen afterwards
+  /// (PROGRESS.md §15). Release builds print nothing.
+  void _recordDecision({
+    required String url,
+    required UrlVerdict verdict,
+    required String reason,
+    required String source,
+  }) {
+    _log.addDeduplicated(
+      url: url,
+      verdict: verdict,
+      reason: reason,
+      source: source,
+    );
+    if (kDebugMode) {
+      debugPrint('[mi-guard] $source ${verdict.name} $url -- $reason');
+    }
+  }
 
   InAppWebViewController? _controller;
 
@@ -106,7 +152,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
   void _onReelPolicyChanged() {
     if (!mounted) return;
     setState(() {
-      _policy = UrlPolicy(reelPolicy: widget.settings.reelPolicy.value);
+      _policy = _buildPolicy();
     });
     unawaited(_applyReelPolicy());
   }
@@ -163,6 +209,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
 
   void _onWebViewCreated(InAppWebViewController controller) {
     _controller = controller;
+    widget.onControllerReady?.call(controller);
 
     // Reports from the in-page guard. Fired for pushState vetoes, blocked
     // anchor clicks and denied popups, where no native callback exists.
@@ -181,7 +228,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
           _ => UrlVerdict.block,
         };
 
-        _log.addDeduplicated(
+        _recordDecision(
           url: url,
           verdict: verdict,
           reason: 'stopped inside the page',
@@ -213,7 +260,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
             if (mounted && _reelOpen) setState(() => _reelOpen = false);
             break;
           case 'blocked':
-            _log.addDeduplicated(
+            _recordDecision(
               url: _currentUrl,
               verdict: UrlVerdict.block,
               reason: 'reel opened; mode B closed it ($detail)',
@@ -225,7 +272,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
           case 'freeze-failed':
             // Focus mode is best effort (SPEC §5.3). A freeze that cannot be
             // applied means we cannot promise "one reel", so leave.
-            _log.addDeduplicated(
+            _recordDecision(
               url: _currentUrl,
               verdict: UrlVerdict.block,
               reason: 'reel freeze failed; leaving the viewer',
@@ -255,7 +302,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
     if (action.isForMainFrame == false) return NavigationActionPolicy.ALLOW;
 
     final UrlDecision decision = _policy.decide(uri);
-    _log.addDeduplicated(
+    _recordDecision(
       url: uri.toString(),
       verdict: decision.verdict,
       reason: decision.reason,
@@ -299,7 +346,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
     final UrlDecision decision = _policy.decide(Uri.parse(value));
     if (!decision.isBlocking && decision.verdict != UrlVerdict.redirect) return;
 
-    _log.addDeduplicated(
+    _recordDecision(
       url: value,
       verdict: decision.verdict,
       reason: decision.reason,
@@ -334,7 +381,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
     // Last-resort guard: if a forbidden page somehow rendered, leave it.
     if (value.isEmpty) return;
     final UrlDecision decision = _policy.decide(Uri.parse(value));
-    _log.addDeduplicated(
+    _recordDecision(
       url: value,
       verdict: decision.verdict,
       reason: decision.isBlocking
@@ -414,7 +461,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
       return _loadUrl(decision.target.toString());
     }
     if (decision.isBlocking) {
-      _log.addDeduplicated(
+      _recordDecision(
         url: url,
         verdict: decision.verdict,
         reason: 'refused an internal load: ${decision.reason}',
@@ -425,7 +472,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
     await controller.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
   }
 
-  Future<void> _loadInbox() => _loadUrl(InstagramRoutes.inbox.toString());
+  Future<void> _loadInbox() => _loadUrl(_policy.home.toString());
 
   /// Leaves the in-page reel viewer.
   ///
@@ -662,7 +709,9 @@ class _BrowserScreenState extends State<BrowserScreen> {
             if (_guardSource != null)
               InAppWebView(
                 initialUrlRequest: URLRequest(
-                  url: WebUri(AppConfig.startUrl.toString()),
+                  url: WebUri(
+                    (widget.startUrl ?? AppConfig.startUrl).toString(),
+                  ),
                 ),
                 initialSettings: buildWebViewSettings(),
                 initialUserScripts: UnmodifiableListView<UserScript>(

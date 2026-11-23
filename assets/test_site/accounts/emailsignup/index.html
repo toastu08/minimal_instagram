@@ -1,0 +1,17 @@
+<!doctype html>
+<!--
+  The sign-up surface, if it ever renders. `UrlPolicy` blocks this path and the
+  guard reloads the login page when its markers appear, so the integration test
+  must never see `data-test="signup"`.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:," />
+    <title>Fixture sign-up</title>
+  </head>
+  <body data-test="signup">
+    <h1>Sign up</h1>
+  </body>
+</html>

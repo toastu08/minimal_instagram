@@ -155,6 +155,7 @@ Three layers, all must pass before a milestone is called complete:
 | Unit | `UrlPolicy`, route builders, settings, version. Fast, no device. | `flutter test` |
 | Widget | Shell chrome, blocked notice, error view, back-button policy. | `flutter test` |
 | On-device | Real Instagram behavior, reel focus mode, session persistence. | `flutter run` on the emulator, manual checklist in `SPEC.md` |
+| Fixture | The real `BrowserScreen` wiring against `assets/test_site/`. No login. | `flutter test integration_test -d emulator-5554` |
 
 Rules:
 
@@ -165,9 +166,28 @@ Rules:
   a fake controller behind an interface if needed.
 - Automated on-device tests use `assets/test_site/` served by
   `InAppLocalhostServer`, never the live Instagram site. Real Instagram is
-  manual-only because it needs a login.
+  manual-only because it needs a login. The fixture origin is reachable only
+  through `UrlPolicy.fixtureSite`; never add its host to the default policy.
 - A manual test checklist lives in `SPEC.md`. Do not mark a milestone done
   without walking it.
+
+### Bugs are expected
+
+A green `flutter test` run and a walked checklist prove only that the paths those
+touched still work. A change can regress a flow nobody re-ran — especially
+transitions between states (signed out to signed in, session expiry, first launch
+after an update) and anything that depends on Instagram's current URLs or DOM.
+
+- Reproduce a reported bug before changing code. Capture the URL, the verdict and
+  the layer that decided it; guessing at the fix is how a security boundary gets
+  widened by accident.
+- Record every open bug in `PROGRESS.md` §15 with its symptom, what was ruled out
+  and how to reproduce it. Keep the entry when you fix it, and add the cause, the
+  fix and the verification.
+- When a fix needs a new allow rule, add the narrow path plus a unit test for it
+  and its near-miss. Never widen the policy to `/direct/*` or `instagram.com/*`.
+- If a state transition is not covered by a checklist item, add the item. The
+  signed-out login path is one such gap today.
 
 ---
 

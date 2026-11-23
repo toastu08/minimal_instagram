@@ -47,6 +47,10 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # Ships with Flutter. Used for the on-device fixture tests (M7); not part of
+  # the app's dependency surface.
+  integration_test:
+    sdk: flutter
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -71,6 +75,16 @@ flutter:
   assets:
     - assets/js/
     - assets/css/
+    # Fixtures for the automated on-device tests (AGENTS.md §6). Flutter lists
+    # files per directory, so each fixture directory needs its own entry. They
+    # also ship in a release build; they are a few KB of static HTML and are
+    # unreachable, because the release policy never allows the localhost host.
+    - assets/test_site/
+    - assets/test_site/direct/inbox/
+    - assets/test_site/direct/t/115950719795361/
+    - assets/test_site/explore/
+    - assets/test_site/accounts/login/
+    - assets/test_site/accounts/emailsignup/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

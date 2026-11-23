@@ -41,6 +41,9 @@ void main() {
       'https://www.instagram.com/accounts/onetap/',
       'https://www.instagram.com/auth_platform/?apc=AbC123',
       'https://www.instagram.com/auth_platform/codeentry/?apc=AbC123',
+      // The 2FA step was renamed from `codeentry` to `afad` between M0 and
+      // 2026-11-23; the whole `/auth_platform/` subtree is allowed (see B1).
+      'https://www.instagram.com/auth_platform/afad/?apc=AbC123',
       // Security checkpoint: without it a flagged login can never finish.
       'https://www.instagram.com/challenge/1234567890/abc/',
       // Cookie consent interstitial, seen on a cold start (2026-11-23).
@@ -109,6 +112,9 @@ void main() {
       'https://www.instagram.com/direct/reels/': 'DM reels surface',
       'https://www.instagram.com/consent-notice/': 'consent look-alike',
       'https://www.instagram.com/consent/extra/': 'consent sub-path',
+      'https://www.instagram.com/auth_platform.evil/':
+          'auth platform look-alike',
+      'https://www.instagram.com/auth_platformx/': 'auth platform look-alike',
       'https://www.instagram.com/api/v1/users/': 'navigated API call',
       'https://example.com/direct/inbox/': 'off-site host',
       'https://www.instagram.com.evil.com/direct/inbox/': 'host suffix spoof',
@@ -229,9 +235,21 @@ void main() {
       );
     });
 
+    test('carries the standard ports only', () {
+      expect(rules['ports'], containsAll(<int>[80, 443]));
+      expect(rules['ports'], hasLength(2));
+    });
+
+    test('carries the inbox the app starts at', () {
+      expect(rules['inbox'], InstagramRoutes.inbox.toString());
+    });
+
     test('carries the same allowed paths', () {
       expect(rules['allowedPaths'], contains('/direct/inbox'));
-      expect(rules['allowedPaths'], contains('/auth_platform/codeentry'));
+    });
+
+    test('carries the auth platform prefix', () {
+      expect(rules['authPlatformPrefix'], '/auth_platform');
     });
 
     test('carries the same patterns', () {
@@ -251,6 +269,102 @@ void main() {
       final Map<String, dynamic> allowed =
           jsonDecode(reelsAllowed.toGuardRulesJson()) as Map<String, dynamic>;
       expect(allowed['reelPolicy'], 'allow');
+    });
+  });
+
+  group('fixture site policy (integration tests only)', () {
+    final UrlPolicy fixture = UrlPolicy.fixtureSite(port: 8080);
+
+    test('allows the fixture inbox and conversation', () {
+      expectVerdict(
+        'http://localhost:8080/direct/inbox/',
+        UrlVerdict.allow,
+        policy: fixture,
+      );
+      expectVerdict(
+        'http://127.0.0.1:8080/direct/t/115950719795361/',
+        UrlVerdict.allow,
+        policy: fixture,
+      );
+    });
+
+    test('keeps the route rules: blocked surfaces stay blocked', () {
+      expectVerdict(
+        'http://localhost:8080/explore/',
+        UrlVerdict.block,
+        policy: fixture,
+      );
+      expectVerdict(
+        'http://localhost:8080/accounts/emailsignup/',
+        UrlVerdict.block,
+        policy: fixture,
+      );
+    });
+
+    test('only the configured port is reachable', () {
+      expectVerdict(
+        'http://localhost:8081/direct/inbox/',
+        UrlVerdict.block,
+        policy: fixture,
+      );
+    });
+
+    test('other hosts are still refused', () {
+      expectVerdict(
+        'http://evil.example:8080/direct/inbox/',
+        UrlVerdict.block,
+        policy: fixture,
+      );
+      expectVerdict(
+        'https://www.instagram.com/direct/inbox/',
+        UrlVerdict.block,
+        policy: fixture,
+      );
+    });
+
+    test('the production policy cannot reach the fixture site', () {
+      expectVerdict('http://localhost:8080/direct/inbox/', UrlVerdict.block);
+    });
+
+    test('the root redirects to the fixture inbox', () {
+      final UrlDecision decision = fixture.decide(
+        Uri.parse('http://localhost:8080/'),
+      );
+      expect(decision.verdict, UrlVerdict.redirect);
+      expect(decision.target, Uri.parse('http://localhost:8080/direct/inbox/'));
+      expect(fixture.home, Uri.parse('http://localhost:8080/direct/inbox/'));
+    });
+
+    test('the generated rules describe the fixture origin', () {
+      final Map<String, dynamic> json =
+          jsonDecode(fixture.toGuardRulesJson()) as Map<String, dynamic>;
+      expect(json['hosts'], containsAll(<String>['localhost', '127.0.0.1']));
+      expect(json['ports'], <int>[8080]);
+      expect(json['inbox'], 'http://localhost:8080/direct/inbox/');
+    });
+
+    test('changing the reel mode preserves host and port rules', () {
+      final UrlPolicy allowed = fixture.withReelPolicy(ReelPolicy.allow);
+      expect(allowed.reelPolicy, ReelPolicy.allow);
+      expectVerdict(
+        'http://localhost:8080/direct/inbox/',
+        UrlVerdict.allow,
+        policy: allowed,
+      );
+      expectVerdict(
+        'http://localhost:8081/direct/inbox/',
+        UrlVerdict.block,
+        policy: allowed,
+      );
+      expectVerdict(
+        'http://localhost:8080/reel/CxAbC123xyZ/',
+        UrlVerdict.allow,
+        policy: allowed,
+      );
+    });
+
+    test('the production policy still defaults to its own inbox', () {
+      expect(defaultPolicy.home, InstagramRoutes.inbox);
     });
   });
 }

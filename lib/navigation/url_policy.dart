@@ -101,10 +101,65 @@ final class UrlPolicy {
   ///
   /// [reelPolicy] defaults to [ReelPolicy.block] so a policy built without the
   /// user's choice fails safe. The app passes the persisted setting explicitly.
-  const UrlPolicy({this.reelPolicy = ReelPolicy.block});
+  const UrlPolicy({ReelPolicy reelPolicy = ReelPolicy.block})
+    : this._(
+        reelPolicy: reelPolicy,
+        hosts: _instagramHosts,
+        allowedPorts: _standardPorts,
+        fixtureOrigin: null,
+      );
+
+  /// A policy that can only reach the local fixture site.
+  ///
+  /// This exists for the automated on-device tests in `integration_test/`, which
+  /// serve `assets/test_site/` with `InAppLocalhostServer` instead of touching
+  /// real Instagram (AGENTS.md §6). It is the only way to exercise the
+  /// enforcement wiring without a login.
+  ///
+  /// Production code never constructs this: `browser_screen.dart` defaults to
+  /// [UrlPolicy] and nothing in the app passes `fixtureSite`. The route rules
+  /// are unchanged, so a forbidden surface is still forbidden; only the origin
+  /// differs, and it is a host the app cannot otherwise reach.
+  UrlPolicy.fixtureSite({required int port, this.reelPolicy = ReelPolicy.block})
+    : _hosts = _fixtureHosts,
+      _allowedPorts = <int>{port},
+      _fixtureOrigin = 'http://localhost:$port';
+
+  const UrlPolicy._({
+    required this.reelPolicy,
+    required this._hosts,
+    required this._allowedPorts,
+    required this._fixtureOrigin,
+  });
 
   /// How single reel permalinks are treated.
   final ReelPolicy reelPolicy;
+
+  /// The hosts this policy can reach.
+  final Set<String> _hosts;
+
+  /// The ports this policy can reach. A port outside this set is not the origin
+  /// it claims to be, whatever the host string says.
+  final Set<int> _allowedPorts;
+
+  /// Non-null only for [UrlPolicy.fixtureSite]; builds the fixture origin.
+  final String? _fixtureOrigin;
+
+  /// The page that stands in for the inbox. Instagram's own, except in tests.
+  Uri get home => _fixtureOrigin == null
+      ? InstagramRoutes.inbox
+      : Uri.parse('$_fixtureOrigin/direct/inbox/');
+
+  /// The same rules with a different reel mode.
+  ///
+  /// Used when the user flips the setting: the host and port rules must survive
+  /// the rebuild, so a fixture policy stays a fixture policy.
+  UrlPolicy withReelPolicy(ReelPolicy policy) => UrlPolicy._(
+    reelPolicy: policy,
+    hosts: _hosts,
+    allowedPorts: _allowedPorts,
+    fixtureOrigin: _fixtureOrigin,
+  );
 
   /// Hosts that serve Instagram's web app.
   static const Set<String> _instagramHosts = <String>{
@@ -112,6 +167,12 @@ final class UrlPolicy {
     'www.instagram.com',
     'm.instagram.com',
   };
+
+  /// The only hosts the fixture site ever uses.
+  static const Set<String> _fixtureHosts = <String>{'localhost', '127.0.0.1'};
+
+  /// Ports that are implicit in an ordinary web address.
+  static const Set<int> _standardPorts = <int>{80, 443};
 
   /// Exact paths that are always allowed.
   ///
@@ -121,14 +182,16 @@ final class UrlPolicy {
     // Messaging.
     '/direct/inbox',
     '/direct/requests',
-    // Sign-in and recovery. `auth_platform` is where Instagram hands off after
-    // the login form; `codeentry` is the two-factor code page. Verified in M0.
+    // Sign-in and recovery. The `auth_platform` subtree is Instagram's own
+    // handoff namespace: the login form, account selection, one-tap and the
+    // two-factor step all live under it. It is allowed as a prefix (see
+    // `_authPlatformPrefix`) because Instagram renames its sub-routes: M0 saw
+    // `/auth_platform/codeentry/`, the 2026-11-23 sign-in went through
+    // `/auth_platform/afad/` instead.
     '/accounts/login',
     '/accounts/password/reset',
     '/accounts/two_factor',
     '/accounts/onetap',
-    '/auth_platform',
-    '/auth_platform/codeentry',
     // Cookie consent. Observed on a cold start on 2026-11-23: the inbox
     // redirected to `/consent/?flow=user_cookie_choice_v2...`, which the policy
     // blocked, leaving a blank page. The consent page is Instagram's own and is
@@ -139,6 +202,16 @@ final class UrlPolicy {
   /// `/challenge/...` is Instagram's security checkpoint. It must be reachable
   /// or a flagged login can never be completed.
   static const String _challengePrefix = '/challenge';
+
+  /// `/auth_platform/...` is Instagram's login handoff. Every sub-route under it
+  /// is a step of signing in (login form, account selection, one-tap, two-factor
+  /// code entry), so the whole subtree must be reachable or any account with
+  /// 2FA enabled — and, over time, every account — becomes unable to sign in.
+  ///
+  /// Allowed as a prefix rather than an enumerated list because Instagram
+  /// changes the sub-route names (`codeentry` in M0, `afad` on 2026-11-23).
+  /// This mirrors the `/challenge/` prefix and is not a wildcard over the host.
+  static const String _authPlatformPrefix = '/auth_platform';
 
   /// `/direct/t/<id>/` — one conversation.
   static final RegExp _threadPath = RegExp(r'^/direct/t/[A-Za-z0-9_-]{1,64}$');
@@ -155,12 +228,13 @@ final class UrlPolicy {
       return UrlDecision.external('non-http scheme: ${uri.scheme}');
     }
 
-    // A non-standard port means this is not Instagram, whatever the host says.
-    if (uri.hasPort && uri.port != 80 && uri.port != 443) {
+    // A port outside the policy's set means this is not the origin the host
+    // string claims to be.
+    if (uri.hasPort && !_allowedPorts.contains(uri.port)) {
       return UrlDecision.block('unexpected port: ${uri.port}');
     }
 
-    if (!_instagramHosts.contains(uri.host.toLowerCase())) {
+    if (!_hosts.contains(uri.host.toLowerCase())) {
       return UrlDecision.block('off-site host: ${uri.host}');
     }
 
@@ -169,12 +243,12 @@ final class UrlPolicy {
     // Landing page: always go straight to messages. The path is checked, not
     // the query, because login lands on `/?deoia=1`.
     if (path == '/') {
-      return UrlDecision.redirect(InstagramRoutes.inbox, 'root -> inbox');
+      return UrlDecision.redirect(home, 'root -> inbox');
     }
 
     // `/direct/` itself is Instagram's legacy DM entry point.
     if (path == '/direct') {
-      return UrlDecision.redirect(InstagramRoutes.inbox, 'direct -> inbox');
+      return UrlDecision.redirect(home, 'direct -> inbox');
     }
 
     if (_allowedPaths.contains(path)) {
@@ -187,6 +261,11 @@ final class UrlPolicy {
 
     if (path == _challengePrefix || path.startsWith('$_challengePrefix/')) {
       return UrlDecision.allow('security challenge');
+    }
+
+    if (path == _authPlatformPrefix ||
+        path.startsWith('$_authPlatformPrefix/')) {
+      return UrlDecision.allow('auth platform handoff');
     }
 
     // Explicit refusals. Deny-by-default already covers these; naming them
@@ -233,14 +312,16 @@ final class UrlPolicy {
   /// follows automatically. Never hand-write an allowlist in JavaScript.
   String toGuardRulesJson() {
     return jsonEncode(<String, Object>{
-      'hosts': _instagramHosts.toList(),
+      'hosts': _hosts.toList(),
+      'ports': _allowedPorts.toList(),
       'allowedPaths': _allowedPaths.toList(),
       'threadPattern': _threadPath.pattern,
       'reelPattern': _reelPath.pattern,
       'postPattern': _postPath.pattern,
       'challengePrefix': _challengePrefix,
+      'authPlatformPrefix': _authPlatformPrefix,
       'reelPolicy': reelPolicy.name,
-      'inbox': InstagramRoutes.inbox.toString(),
+      'inbox': home.toString(),
     });
   }
 }

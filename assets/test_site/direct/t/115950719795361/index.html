@@ -1,0 +1,42 @@
+<!doctype html>
+<!--
+  Fixture conversation. The reel viewer is built on demand because that is how
+  it behaves on Instagram: it has no URL and no history entry, so the only way
+  to observe it is the DOM.
+
+  The carousel is deliberately shaped like the real one: a scroll container
+  taller than its viewport holds several slides, and only the first video
+  intersects the viewport. That is what the guard keys on (PROGRESS.md §2.5).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:," />
+    <title>Fixture conversation</title>
+    <style>
+      body { font-family: sans-serif; margin: 1rem; }
+      #viewer[hidden] { display: none; }
+    </style>
+  </head>
+  <body data-test="thread">
+    <h1>roncea_andrei</h1>
+    <p>This conversation has a shared reel.</p>
+    <button id="open-reel" type="button">Open reel</button>
+    <div id="viewer" hidden></div>
+    <script>
+      document.getElementById('open-reel').addEventListener('click', function () {
+        var viewer = document.getElementById('viewer');
+        viewer.hidden = false;
+        viewer.innerHTML =
+          '<div id="scroller" style="overflow-y:auto;height:80vh">' +
+          '  <div id="slides">' +
+          '    <div><video muted style="width:100vw;height:70vh"></video></div>' +
+          '    <div><video muted style="width:100vw;height:70vh"></video></div>' +
+          '    <div><video muted style="width:100vw;height:70vh"></video></div>' +
+          '  </div>' +
+          '</div>';
+      });
+    </script>
+  </body>
+</html>

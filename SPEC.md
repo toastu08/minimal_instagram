@@ -133,7 +133,7 @@ top-level navigations, and blocking them would break the page.
 | `/direct/new/` | `block` | Recipient search; deferred, see §4.5 |
 | `/accounts/login/` (+ variants) | `allow` | Needed to sign in |
 | `/accounts/password/reset/` | `allow` | Needed to recover |
-| `/auth_platform/`, `/auth_platform/codeentry/` | `allow` | Login and 2FA hand-off. Required: M0 showed a 2FA login goes through both |
+| `/auth_platform/` + any sub-path | `allow` | Login and 2FA hand-off. Allowed as a prefix: the sub-route names change (`codeentry` in M0, `afad` on 2026-11-23). Denying one breaks sign-in for 2FA accounts. See `PROGRESS.md` §15 B1 |
 | `/accounts/two_factor/`, `/challenge/` | `allow` | Needed to pass Instagram's own checks |
 | `/consent/` | `allow` | Cookie consent interstitial, shown once. Observed on a cold start (2026-11-23); blocking it leaves a blank page |
 | `/accounts/signup/`, `/accounts/emailsignup/` | `block` | Account creation is out of scope |
@@ -470,10 +470,21 @@ complete. Real Instagram is manual-only because it requires a login.
 
 ### 10.3 Session (M4)
 
+- [x] **Sign in from a signed-out state and land on the inbox** (walked
+      2026-11-23; B1 fixed, see `PROGRESS.md` §15)
 - [x] Log in with username + password; 2FA works if enabled
 - [x] Kill the app from the task switcher, relaunch: still logged in, on inbox
 - [x] Clear session returns to login and does not keep the old page in history
 - [ ] An expired session lands on login without a crash or redirect loop
+
+The first item separates two different things that M4/M5/M6 testing conflated:
+staying signed in, and getting signed in. Every device walk in M5 and M6 started
+from an existing session, so this transition was never exercised after the M6
+sign-up guard and consent rule landed. It produced B1: Instagram's two-factor
+step had moved from `/auth_platform/codeentry/` to `/auth_platform/afad/`, and
+deny-by-default cancelled it. The whole `/auth_platform/` subtree is now allowed;
+the cause and the verification are in `PROGRESS.md` §15, B1. Treat any other
+unexercised transition as equally suspect.
 
 The clear-session path was walked on 2026-11-23. Two details belong in the
 record: after clearing, Instagram first shows its cookie-consent page again
