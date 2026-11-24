@@ -1101,12 +1101,13 @@ guarantee (AGENTS.md §2.7).
 | File | Purpose |
 | --- | --- |
 | `lib/navigation/dm_transition.dart` | pure `classifyDmTransition(from, to)` → `forward` / `back` / `none` |
-| `lib/ui/common/dm_transition_overlay.dart` | Flutter-drawn sweep curtain (`AnimatedWidget`), never touches the WebView |
+| `lib/ui/common/dm_transition_overlay.dart` | pointer-transparent shell: forward = conversation skeleton, back = inbox skeleton |
+| `lib/ui/common/loading_skeleton.dart` | shared shimmer frame + the conversation and inbox skeleton layouts |
 | `lib/core/settings/app_settings.dart` | persisted `animationsEnabled` (`animations_enabled`), default on |
 | `lib/ui/settings/settings_sheet.dart` | Motion → "Slide transitions" switch |
 | `lib/webview/browser_screen.dart` | trigger in visited-history and load-stop; `AnimationController`; reduce-motion guard |
 | `test/dm_transition_test.dart` | forward / back / none sets + a drift test against `UrlPolicy` |
-| `test/dm_transition_overlay_test.dart` | curtain geometry at 0/.5/1 and pointer transparency |
+| `test/dm_transition_overlay_test.dart` | timeline geometry (slide/opacity), both skeletons, pointer transparency |
 | `test/app_settings_test.dart` | animations default, persistence, notification |
 | `test/settings_sheet_test.dart` | the Motion control and its notifier |
 
@@ -1120,22 +1121,31 @@ guarantee (AGENTS.md §2.7).
    `MediaQuery.disableAnimations`, and by a 300 ms debounce (a full load can
    surface through both callbacks).
 3. The body `Stack` gains a topmost `DmTransitionOverlay` **sibling** (never an
-   ancestor of the WebView). It sweeps an opaque, pointer-transparent curtain
-   across the screen — forward right→left, back left→right — over 280 ms. On
-   completion the direction resets to `none`, which renders nothing.
+   ancestor of the WebView). It is pointer-transparent and renders nothing when
+   idle. Entering a conversation (`forward`) slides in the conversation skeleton
+   (gray chat bubbles with a sweeping shimmer) from the right; leaving (`back`)
+   slides in the inbox skeleton (notes circles over conversation rows) from the
+   left. Both hold a beat and fade out. The first forward of a session uses the
+   slower ~750 ms timeline because the thread really loads; every other move —
+   later forwards and all backs — uses a fast ~300 ms timeline because the
+   WebView swaps instantly.
 4. Reloads, cold starts, refused URLs, post pages and login pages all classify as
    `none`, so they never animate. `isReload` is also filtered on the history path.
 
 ### Honest limits and things to tune
 
-- This is a **first pass**, left deliberately easy to iterate. The most likely
-  changes after seeing it on the emulator are the duration (280 ms), the sweep
-  easing (`Curves.easeInOut`) and whether a full wipe reads well versus a
-  cover-and-fade.
+- This is a **first pass**, left deliberately easy to iterate. The forward
+  skeleton timeline is ~750 ms on the first open of a session and ~300 ms after
+  that; the backward inbox skeleton is always ~300 ms. Slide-in is ~32%, hold
+  ~43% and fade-out ~25% of whichever total (split at
+  `dm_transition_overlay.dart`'s `_slideInEnd`/`_holdEnd`). The shimmer sweep
+  repeats at 1100 ms. All are single constants, easy to tweak after seeing them
+  on the emulator. Both skeleton layouts are generated to overfill the screen
+  so they read as a full page, not a half screen with an imagined keyboard.
 - The WebView is **never moved**. Translating the native platform view was the
-  first attempt and it broke navigation (see §15 B2), so the motion is drawn as a
-  Flutter-only curtain over it. That is the safe, permanent shape, not a fallback.
-- Because the content swaps instantly inside the WebView, the curtain **masks**
+  first attempt and it broke navigation (see §15 B2), so the motion is drawn as
+  Flutter-only content over it. That is the safe, permanent shape, not a fallback.
+- Because the content swaps instantly inside the WebView, the overlay **masks**
   the swap; it cannot show the old surface sliding out. That is the unavoidable
   consequence of one WebView, and it is not a native two-screen push.
 - The motion is cosmetic. It decides nothing and blocks no input; a missing
@@ -1143,10 +1153,10 @@ guarantee (AGENTS.md §2.7).
 
 ### Verification
 
-`flutter analyze` clean; `flutter test` green (128 tests). On device, confirmed
+`flutter analyze` clean; `flutter test` green (130 tests). On device, confirmed
 via CDP that tapping a conversation lands on `/direct/t/<id>/` and **stays** (no
 bounce), and that the app-bar back returns to `/direct/inbox/` with no guard
-decisions logged. The animation itself still needs a human eye against
+decisions logged. The skeleton animation itself still needs a human eye against
 `SPEC.md` §10.6.
 
 ### Verify M8

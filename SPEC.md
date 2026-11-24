@@ -99,10 +99,12 @@ the WebView. The app never reads, stores, or autofills credentials.
 
 The inbox and a conversation live in the same WebView, and Instagram swaps them
 with a client-side `pushState` that renders no transition, so the change is a
-hard cut. The app adds one short cosmetic slide over that cut:
+hard cut. The app adds one short cosmetic motion over that cut:
 
-- entering a conversation sweeps a slide in from the right;
-- returning to the inbox sweeps it in from the left.
+- entering a conversation slides in a dark "still loading" skeleton from the
+  right, holds it a beat and fades it out, masking the swap;
+- returning to the inbox slides in a matching "still loading" inbox skeleton
+  from the left, then fades it out.
 
 The direction comes from the URL path only — inbox-level `/direct/inbox` and
 `/direct/requests`, thread-level `/direct/t/<id>` — through
@@ -455,9 +457,10 @@ driven by an integration test.
 
 ### M8 — Motion
 
-A cosmetic slide between the inbox and a conversation so the WebView's hard
-`pushState` cut feels alive. Direction is derived from the URL; the route policy
-is unchanged.
+A cosmetic motion between the inbox and a conversation so the WebView's hard
+`pushState` cut feels alive. Entering a conversation slides in a "loading"
+skeleton and fades it out; leaving it keeps a plain slide. Direction is derived
+from the URL; the route policy is unchanged.
 
 **Acceptance:** manual checklist §10.6 passes; `flutter analyze` and `flutter
 test` clean; the animation is suppressed by the setting and by the system
@@ -567,12 +570,12 @@ reload backstop.
 
 ### 10.6 Motion (M8)
 
-- [ ] Opening a conversation slides the content in from the right
-- [ ] Going back to the inbox slides the content in from the left
-- [ ] Reloading a page does not play the slide
+- [ ] Opening a conversation slides in a dark "loading" skeleton, holds it, then fades it out
+- [ ] Going back to the inbox slides in a dark "loading" inbox skeleton, then fades it out
+- [ ] Reloading a page does not play the transition
 - [ ] Settings → Motion → Slide transitions off makes both directions instant
 - [ ] With the phone's "remove animations" setting on, both are instant
-- [ ] The slide never blocks a tap and never leaves the page offset
+- [ ] The transition never blocks a tap and never leaves the page offset
 
 ---
 

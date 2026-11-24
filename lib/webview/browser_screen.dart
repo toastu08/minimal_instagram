@@ -70,10 +70,27 @@ class _BrowserScreenState extends State<BrowserScreen>
   late UrlPolicy _policy = _buildPolicy();
 
   /// Drives the inbox <-> conversation slide. Resting at 1 means "settled".
+  ///
+  /// The duration is retargeted in [_playTransition]: entering a conversation
+  /// plays the slower skeleton timeline on the first open and a fast one after
+  /// that; leaving a conversation always plays the fast skeleton.
   late final AnimationController _transitionController;
+
+  /// Length of the first forward skeleton reveal of a session (the thread really
+  /// loads, so it needs the longer mask): slide-in -> hold -> fade-out.
+  static const Duration _skeletonDuration = Duration(milliseconds: 750);
+
+  /// Length of every other reveal — later forwards and all backs — where the
+  /// WebView swaps instantly, so the skeleton just flashes over it.
+  static const Duration _skeletonDurationFast = Duration(milliseconds: 300);
 
   /// Which way the current slide is playing; [DmTransition.none] when idle.
   DmTransition _transitionDirection = DmTransition.none;
+
+  /// True once a conversation has been opened this session. The first open does
+  /// a real load; after that Instagram swaps threads instantly, so the skeleton
+  /// can be much shorter.
+  bool _conversationOpenedOnce = false;
 
   /// Rate-limits the slide so one navigation is not animated twice (a full load
   /// can surface through both visited-history and load-stop).
@@ -149,7 +166,7 @@ class _BrowserScreenState extends State<BrowserScreen>
     widget.settings.reelPolicy.addListener(_onReelPolicyChanged);
     _transitionController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 280),
+      duration: _skeletonDurationFast,
       value: 1,
     )..addStatusListener(_onTransitionStatus);
     unawaited(_loadGuardScript());
@@ -187,6 +204,17 @@ class _BrowserScreenState extends State<BrowserScreen>
     }
     _lastTransitionAt = now;
 
+    // Entering a conversation (forward) is slow on the first open of a session —
+    // the thread really loads — and fast after that. Leaving (back) is always
+    // fast, because the inbox is already in memory. Both run on the one
+    // controller.
+    final bool forward = direction == DmTransition.forward;
+    _transitionController.duration = forward && !_conversationOpenedOnce
+        ? _skeletonDuration
+        : _skeletonDurationFast;
+    if (forward) {
+      _conversationOpenedOnce = true;
+    }
     setState(() => _transitionDirection = direction);
     _transitionController.forward(from: 0);
   }

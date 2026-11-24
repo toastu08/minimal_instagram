@@ -136,7 +136,7 @@ it away when you press "Clear session".
 | The address helper | Knows the shape of Instagram addresses; builds them in one place |
 | The page decorator | The stylesheet and script that cover up Instagram's furniture |
 | The watch log | A rolling list of every door the Doorman allowed or refused |
-| The motion | Gives opening or leaving a conversation a short slide, so it stops feeling like an instant jump |
+| The motion | Gives opening a conversation a brief "still loading" skeleton and leaving it a short slide, so it stops feeling like an instant jump |
 | The hidden workshop | Debug-only screens, invisible in the version you would install |
 
 ---
@@ -166,11 +166,13 @@ returns you to the sign-in page. This is a strong deterrent, not a promise: it
 depends on Instagram's labels, and a redesign could weaken it.
 
 Opening a conversation used to be an instant jump, because Instagram's web
-version does not slide from the message list into a chat. The app now adds a
-short slide of its own: opening a chat brings the screen in from the right, and
-going back brings it in from the left. It is decoration, not part of the lock on
-the door. You can turn it off in Settings, and the phone's own "remove
-animations" setting always wins.
+version does not slide from the message list into a chat. The app now hides that
+jump behind a short "still loading" skeleton — a dark screen of gray message
+shapes that slides in, lingers a moment and fades away, as if the chat were
+still loading. Going back to the inbox plays the same trick with a skeleton of
+the inbox list, so the return feels like a loading screen too. It is decoration,
+not part of the lock on the door. You can turn it off in Settings, and the
+phone's own "remove animations" setting always wins.
 
 Two honest notes. First, both the reel viewer and the sign-up flow belong to
 Instagram and have no address of their own; the app's grip on them is strong but
