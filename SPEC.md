@@ -51,8 +51,9 @@ The app has exactly three user-facing surfaces plus one developer-only surface.
 
 A full-screen WebView with a thin app bar above it.
 
-- **App bar**: back button, title ("Messages"), settings, reload, and a debug
-  button in debug builds only.
+- **App bar**: a black bar with a back button on the left, "Minimal Instagram"
+  centered, and settings on the right. The debug screen (debug builds only) is
+  reached by long-pressing the title; there is no reload or debug button.
 - **Settings** (bottom sheet): reels behavior, clear session, About/version.
 - The WebView fills the rest of the screen. Instagram's own navigation bars are
   hidden by the sanitizer, so the app bar is the only chrome the user sees.
@@ -82,6 +83,8 @@ Settings persist across restarts. Only the reels choice is stored; nothing about
 the user or the session is.
 
 ### 3.3 Debug info (debug builds only)
+
+Reached by long-pressing the app title.
 
 - Current URL and last 200 guard decisions
 - Sanitizer report: how many nodes each rule matched in the last pass
@@ -314,7 +317,8 @@ into one notice so the user is not spammed.
 
 ### 6.3 Pull to refresh
 
-Not implemented. Reload lives in the app bar.
+Not implemented. There is no reload button; the page reloads only on
+app-initiated events (for example a reels-preference change).
 
 ### 6.4 Links opening new windows
 
@@ -485,7 +489,6 @@ complete. Real Instagram is manual-only because it requires a login.
 - [ ] An `instagram://` link does nothing and no other app opens
 - [ ] Back from a thread returns to the inbox
 - [ ] Back from the inbox exits the app
-- [ ] Reload preserves the current page
 
 ### 10.2 Sanitizer (M3)
 

@@ -3,7 +3,7 @@
 State of the project for whoever picks this up next. Read this first, then
 `SPEC.md` for intended behavior and `AGENTS.md` for rules.
 
-**Last updated:** 2026-11-24
+**Last updated:** 2026-11-25
 **Current milestone:** M8 complete. Every milestone in `SPEC.md` §9 is delivered:
 M0–M8, with B1 (sign-in from a signed-out state, §15) fixed and verified on
 device.
@@ -13,6 +13,12 @@ expected to change after seeing it on a real screen. Before a release, also walk
 the rest of §10 on real Instagram — the fixture tests (§16) prove the wiring, not
 Instagram's current DOM. The two open checklist items remain post-from-DM
 (untested: the test thread has no post) and a simulated session expiry.
+
+**Header polish (2026-11-25):** the app bar is now black with "Minimal
+Instagram" centered, a back button on the left and settings on the right. The
+reload and debug buttons are gone. The debug screen is reached by long-pressing
+the title in debug builds only (see `SPEC.md` §3.3); `_openDebug` in
+`lib/webview/browser_screen.dart` is still the entry point.
 
 > **Bugs are expected.** A green test suite and a walked checklist only cover the
 > paths someone actually exercised. A change that passes its own milestone can

@@ -763,6 +763,19 @@ class _BrowserScreenState extends State<BrowserScreen>
     }
   }
 
+  /// The centered app title.
+  ///
+  /// The debug screen is no longer advertised as a header button; in debug
+  /// builds it stays reachable with a long press on the title.
+  Widget _buildTitle() {
+    const Text title = Text('Minimal Instagram');
+    if (!kDebugMode) return title;
+    return GestureDetector(
+      onLongPress: () => unawaited(_openDebug()),
+      child: title,
+    );
+  }
+
   // -------------------------------------------------------------------- build
 
   @override
@@ -774,29 +787,27 @@ class _BrowserScreenState extends State<BrowserScreen>
       },
       child: Scaffold(
         appBar: AppBar(
+          backgroundColor: Colors.black,
+          surfaceTintColor: Colors.transparent,
+          foregroundColor: Colors.white,
+          centerTitle: true,
+          systemOverlayStyle: const SystemUiOverlayStyle(
+            statusBarColor: Colors.black,
+            statusBarIconBrightness: Brightness.light,
+            statusBarBrightness: Brightness.dark,
+          ),
           leading: IconButton(
             tooltip: 'Back',
             icon: const Icon(Icons.arrow_back),
             onPressed: () => unawaited(_handleBack()),
           ),
-          title: const Text('Messages'),
+          title: _buildTitle(),
           actions: <Widget>[
             IconButton(
               tooltip: 'Settings',
               icon: const Icon(Icons.settings_outlined),
               onPressed: () => unawaited(_openSettings()),
             ),
-            IconButton(
-              tooltip: 'Reload',
-              icon: const Icon(Icons.refresh),
-              onPressed: () => unawaited(_controller?.reload()),
-            ),
-            if (kDebugMode)
-              IconButton(
-                tooltip: 'Debug',
-                icon: const Icon(Icons.bug_report_outlined),
-                onPressed: () => unawaited(_openDebug()),
-              ),
           ],
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(2),

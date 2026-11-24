@@ -181,7 +181,9 @@ class _InboxPlaceholder extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView(
       physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+      // The top padding pushes the notes circles clear of any device cutout;
+      // on some handsets the very top row sat too close to the edge.
+      padding: const EdgeInsets.fromLTRB(16, 30, 16, 24),
       children: <Widget>[
         _notesRow(),
         const SizedBox(height: 20),
