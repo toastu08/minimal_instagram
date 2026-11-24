@@ -3,13 +3,15 @@
 State of the project for whoever picks this up next. Read this first, then
 `SPEC.md` for intended behavior and `AGENTS.md` for rules.
 
-**Last updated:** 2026-11-23
-**Current milestone:** M7 complete. Every milestone in `SPEC.md` §9 is delivered:
-M0–M7, with B1 (sign-in from a signed-out state, §15) fixed and verified on
+**Last updated:** 2026-11-24
+**Current milestone:** M8 complete. Every milestone in `SPEC.md` §9 is delivered:
+M0–M8, with B1 (sign-in from a signed-out state, §15) fixed and verified on
 device.
-**Next action:** none scheduled. Before a release, walk the manual checklists in
-`SPEC.md` §10 on real Instagram again — the fixture tests (§16) prove the wiring,
-not Instagram's current DOM. The two open checklist items are post-from-DM
+**Next action:** walk `SPEC.md` §10.6 on the emulator and tune the motion to
+taste. The animation is a first pass (see §17); durations, distance and curve are
+expected to change after seeing it on a real screen. Before a release, also walk
+the rest of §10 on real Instagram — the fixture tests (§16) prove the wiring, not
+Instagram's current DOM. The two open checklist items remain post-from-DM
 (untested: the test thread has no post) and a simulated session expiry.
 
 > **Bugs are expected.** A green test suite and a walked checklist only cover the
@@ -31,6 +33,7 @@ not Instagram's current DOM. The two open checklist items are post-from-DM
 | M5 Single-item focus | **Done** | Reel guard and Mode B verified on device; post-from-DM path untested (no post in the test thread). See §11 |
 | M6 Settings/debug | **Done** | Persisted reels toggle, version, release manifest, release smoke test. See §14 |
 | M7 Regression tests | **Done** | Fixture site + 8 on-device integration tests. See §16 |
+| M8 Motion | **Done (first pass)** | Cosmetic inbox↔thread slide, setting + reduce-motion. See §17 |
 
 **Open bugs:** none. B1 (§15) was fixed and verified on device on 2026-11-23.
 
@@ -948,6 +951,46 @@ verdict, the reason and the source (`navigation`, `history`, `load`, `click`,
 work". If a new route is genuinely required, add the narrow path, a unit test for
 it and its near-miss, and document it in `SPEC.md` §4.3.
 
+### B2 — Tapping a conversation bounced back to the inbox (2026-11-24, FIXED 2026-11-24)
+
+**Symptom.** After the M8 motion work landed, tapping a conversation did not open
+it: the app briefly showed the inbox again. The user described it as "the URL
+filter is broken," but the filter was never the problem.
+
+**Why it looked like a filter bug.** Deny-by-default *also* sends you back to the
+inbox, so the symptom was indistinguishable from a blocked route at a glance.
+
+**What was ruled out.** `git diff` showed `url_policy.dart`, `instagram_routes.dart`
+and both guard scripts were byte-identical — the allow/block rules had not moved.
+The guard log was the decisive evidence: tapping a conversation produced repeated
+`[mi-guard] load allow .../direct/inbox/` lines and an occasional
+`history redirect https://www.instagram.com/`, but **no** `/direct/t/<id>/` line at
+all — not `allow`, not `block`. A genuine filter block always logs the offending
+URL. The thread URL never becoming a navigation meant the WebView was being reset,
+not policed.
+
+**Cause.** The first motion implementation wrapped the WebView in a
+`FractionalTranslation` so the platform view would slide. `flutter_inappwebview`
+renders a native Android view, and inserting/removing a transform around it
+forced the view to be re-created, which reloaded its initial URL (the inbox)
+before the thread's `pushState` ever became a navigation.
+
+**Fix.** Stop moving the platform view entirely. The motion is now drawn as a
+Flutter-only curtain (`lib/ui/common/dm_transition_overlay.dart`) that sits *on
+top of* the WebView as a sibling in the `Stack`, never as an ancestor. It is
+pointer-transparent and always renders nothing when idle.
+
+**Verification (device, 2026-11-24).** Rebuilt and reinstalled; drove the app via
+`adb`. Confirmed over the WebView DevTools endpoint that tapping a conversation
+lands on `https://www.instagram.com/direct/t/115950719795361/` and **stays** there
+after the animation settles, with no `[mi-guard]` lines; the app-bar back returns
+to `/direct/inbox/` cleanly. `flutter analyze` clean; 128 tests pass.
+
+**Lesson.** The URL layer was correct the whole time. A "blocked" symptom can also
+mean "the WebView got re-created" — and the guard log distinguishes the two,
+because recreation produces no `block` line for the URL that was supposed to load.
+Do not touch a native platform view with Flutter transforms.
+
 ---
 
 ## 16. M7 delivery notes — automated regression (2026-11-23)
@@ -1032,3 +1075,84 @@ static HTML, and it is unreachable: the production policy only allows Instagram'
 hosts, and the in-page rules carry the same host list. If a future release
 trimming pass wants it out, the fixtures can move behind a build flavour, but
 that is not worth a second build configuration today.
+
+---
+
+## 17. M8 delivery notes — motion (2026-11-24)
+
+### Why it was needed
+
+On device (2026-11-24) the inbox → conversation change was confirmed to be an
+instant hard cut: Instagram's mobile web renders **no** transition between the
+two DM surfaces. It is a `history.pushState`, not a page load, so there is
+nothing for the browser to animate and the swap looks abrupt.
+
+### The constraint
+
+Inbox and thread live in the **same** WebView, and Instagram keeps the inbox DOM
+mounted underneath the thread (PROGRESS.md §2.4). There is no Flutter route push
+or pop to hook, and there are not two screens to slide. The only honest options
+were a cosmetic Flutter overlay or fighting Instagram's React DOM; the former was
+chosen because it cannot break the page and keeps the URL layer as the sole
+guarantee (AGENTS.md §2.7).
+
+### What was added
+
+| File | Purpose |
+| --- | --- |
+| `lib/navigation/dm_transition.dart` | pure `classifyDmTransition(from, to)` → `forward` / `back` / `none` |
+| `lib/ui/common/dm_transition_overlay.dart` | Flutter-drawn sweep curtain (`AnimatedWidget`), never touches the WebView |
+| `lib/core/settings/app_settings.dart` | persisted `animationsEnabled` (`animations_enabled`), default on |
+| `lib/ui/settings/settings_sheet.dart` | Motion → "Slide transitions" switch |
+| `lib/webview/browser_screen.dart` | trigger in visited-history and load-stop; `AnimationController`; reduce-motion guard |
+| `test/dm_transition_test.dart` | forward / back / none sets + a drift test against `UrlPolicy` |
+| `test/dm_transition_overlay_test.dart` | curtain geometry at 0/.5/1 and pointer transparency |
+| `test/app_settings_test.dart` | animations default, persistence, notification |
+| `test/settings_sheet_test.dart` | the Motion control and its notifier |
+
+### How it works
+
+1. `_onVisitedHistory` (the main signal for `pushState`) and `_onLoadStop`
+   (the full-load fallback for the app-bar back) each keep the previous URL,
+   compare it with the new one through `classifyDmTransition`, and call
+   `_playTransition`.
+2. `_playTransition` is gated by the setting, by
+   `MediaQuery.disableAnimations`, and by a 300 ms debounce (a full load can
+   surface through both callbacks).
+3. The body `Stack` gains a topmost `DmTransitionOverlay` **sibling** (never an
+   ancestor of the WebView). It sweeps an opaque, pointer-transparent curtain
+   across the screen — forward right→left, back left→right — over 280 ms. On
+   completion the direction resets to `none`, which renders nothing.
+4. Reloads, cold starts, refused URLs, post pages and login pages all classify as
+   `none`, so they never animate. `isReload` is also filtered on the history path.
+
+### Honest limits and things to tune
+
+- This is a **first pass**, left deliberately easy to iterate. The most likely
+  changes after seeing it on the emulator are the duration (280 ms), the sweep
+  easing (`Curves.easeInOut`) and whether a full wipe reads well versus a
+  cover-and-fade.
+- The WebView is **never moved**. Translating the native platform view was the
+  first attempt and it broke navigation (see §15 B2), so the motion is drawn as a
+  Flutter-only curtain over it. That is the safe, permanent shape, not a fallback.
+- Because the content swaps instantly inside the WebView, the curtain **masks**
+  the swap; it cannot show the old surface sliding out. That is the unavoidable
+  consequence of one WebView, and it is not a native two-screen push.
+- The motion is cosmetic. It decides nothing and blocks no input; a missing
+  signal just means a hard cut, exactly as before.
+
+### Verification
+
+`flutter analyze` clean; `flutter test` green (128 tests). On device, confirmed
+via CDP that tapping a conversation lands on `/direct/t/<id>/` and **stays** (no
+bounce), and that the app-bar back returns to `/direct/inbox/` with no guard
+decisions logged. The animation itself still needs a human eye against
+`SPEC.md` §10.6.
+
+### Verify M8
+
+```bash
+flutter analyze
+flutter test
+flutter run -d emulator-5554   # then walk SPEC §10.6
+```

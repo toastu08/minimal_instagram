@@ -23,8 +23,10 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../core/config/app_config.dart';
 import '../core/logging/guard_log.dart';
 import '../core/settings/app_settings.dart';
+import '../navigation/dm_transition.dart';
 import '../navigation/instagram_routes.dart';
 import '../navigation/url_policy.dart';
+import '../ui/common/dm_transition_overlay.dart';
 import '../ui/common/error_view.dart';
 import '../ui/debug/debug_screen.dart';
 import '../ui/settings/settings_sheet.dart';
@@ -62,9 +64,20 @@ class BrowserScreen extends StatefulWidget {
   State<BrowserScreen> createState() => _BrowserScreenState();
 }
 
-class _BrowserScreenState extends State<BrowserScreen> {
+class _BrowserScreenState extends State<BrowserScreen>
+    with SingleTickerProviderStateMixin {
   /// The policy in force. Rebuilt when the user changes the reels preference.
   late UrlPolicy _policy = _buildPolicy();
+
+  /// Drives the inbox <-> conversation slide. Resting at 1 means "settled".
+  late final AnimationController _transitionController;
+
+  /// Which way the current slide is playing; [DmTransition.none] when idle.
+  DmTransition _transitionDirection = DmTransition.none;
+
+  /// Rate-limits the slide so one navigation is not animated twice (a full load
+  /// can surface through both visited-history and load-stop).
+  DateTime? _lastTransitionAt;
 
   UrlPolicy _buildPolicy() =>
       widget.policy?.withReelPolicy(widget.settings.reelPolicy.value) ??
@@ -134,13 +147,48 @@ class _BrowserScreenState extends State<BrowserScreen> {
   void initState() {
     super.initState();
     widget.settings.reelPolicy.addListener(_onReelPolicyChanged);
+    _transitionController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+      value: 1,
+    )..addStatusListener(_onTransitionStatus);
     unawaited(_loadGuardScript());
   }
 
   @override
   void dispose() {
     widget.settings.reelPolicy.removeListener(_onReelPolicyChanged);
+    _transitionController.dispose();
     super.dispose();
+  }
+
+  /// Returns to the resting state once a slide finishes, dropping the transform.
+  void _onTransitionStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed && mounted) {
+      setState(() => _transitionDirection = DmTransition.none);
+    }
+  }
+
+  /// Plays the inbox <-> conversation slide when the URL levels change.
+  ///
+  /// Cosmetic and best effort (AGENTS.md §2.7). A disabled setting, a reduce-
+  /// motion request, or an ambiguous signal simply means no animation; the URL
+  /// policy is what actually decides navigation.
+  void _playTransition(DmTransition direction) {
+    if (direction == DmTransition.none || !mounted) return;
+    if (!widget.settings.animationsEnabled.value) return;
+    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) return;
+
+    final DateTime now = DateTime.now();
+    if (_lastTransitionAt != null &&
+        now.difference(_lastTransitionAt!) <
+            const Duration(milliseconds: 300)) {
+      return;
+    }
+    _lastTransitionAt = now;
+
+    setState(() => _transitionDirection = direction);
+    _transitionController.forward(from: 0);
   }
 
   /// Applies a reels-preference change.
@@ -342,9 +390,24 @@ class _BrowserScreenState extends State<BrowserScreen> {
     final String value = url?.toString() ?? '';
     if (value.isEmpty) return;
 
+    final String previous = _currentUrl;
     _currentUrl = value;
     final UrlDecision decision = _policy.decide(Uri.parse(value));
-    if (!decision.isBlocking && decision.verdict != UrlVerdict.redirect) return;
+
+    // A normal client-side move is the main place a conversation opens or
+    // closes. Animate before the early return below, which only handles the
+    // refusal paths.
+    if (!decision.isBlocking && decision.verdict != UrlVerdict.redirect) {
+      if (isReload != true) {
+        _playTransition(
+          classifyDmTransition(
+            Uri.parse(previous.isEmpty ? value : previous),
+            Uri.parse(value),
+          ),
+        );
+      }
+      return;
+    }
 
     _recordDecision(
       url: value,
@@ -365,6 +428,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
     WebUri? url,
   ) async {
     final String value = url?.toString() ?? '';
+    final String previous = _currentUrl;
     _currentUrl = value;
     if (mounted) {
       setState(() {
@@ -393,6 +457,16 @@ class _BrowserScreenState extends State<BrowserScreen> {
       unawaited(_loadInbox());
       return;
     }
+
+    // A full load can also complete a DM level change (for example the app-bar
+    // back falling through to a fresh inbox). The visited-history path usually
+    // got there first; the debounce in _playTransition absorbs the overlap.
+    _playTransition(
+      classifyDmTransition(
+        Uri.parse(previous.isEmpty ? value : previous),
+        Uri.parse(value),
+      ),
+    );
 
     // A login page after a DM page means the session ended. Instagram is free
     // to expose this as a redirect at any moment, so it is detected here rather
@@ -598,6 +672,8 @@ class _BrowserScreenState extends State<BrowserScreen> {
         reelPolicy: widget.settings.reelPolicy,
         onReelPolicyChanged: (ReelPolicy policy) =>
             widget.settings.setBlockReels(policy == ReelPolicy.block),
+        animationsEnabled: widget.settings.animationsEnabled,
+        onAnimationsChanged: widget.settings.setAnimationsEnabled,
         onClearSession: _clearSession,
         version: AppConfig.version,
       ),
@@ -748,6 +824,12 @@ class _BrowserScreenState extends State<BrowserScreen> {
                 bottom: 24,
                 child: _ReelBanner(onClose: () => unawaited(_closeReel())),
               ),
+            // Topmost: the cosmetic slide curtain. A sibling of the WebView, so
+            // it never touches the platform view's render tree.
+            DmTransitionOverlay(
+              animation: _transitionController,
+              direction: _transitionDirection,
+            ),
           ],
         ),
       ),

@@ -17,6 +17,8 @@ class SettingsSheet extends StatelessWidget {
     super.key,
     required this.reelPolicy,
     required this.onReelPolicyChanged,
+    required this.animationsEnabled,
+    required this.onAnimationsChanged,
     required this.onClearSession,
     required this.version,
   });
@@ -27,6 +29,12 @@ class SettingsSheet extends StatelessWidget {
 
   /// Applies a new reels preference. Persistence belongs to the caller.
   final ValueChanged<ReelPolicy> onReelPolicyChanged;
+
+  /// The live motion preference, exposed the same way as [reelPolicy].
+  final ValueListenable<bool> animationsEnabled;
+
+  /// Applies a new motion preference. Persistence belongs to the caller.
+  final ValueChanged<bool> onAnimationsChanged;
 
   /// Deletes cookies and site data, then returns to the login page.
   ///
@@ -122,6 +130,32 @@ class SettingsSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+              child: Text('Motion', style: theme.textTheme.labelLarge),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 4, 24, 4),
+              child: Text(
+                'Slide the screen when opening or leaving a conversation. The '
+                'phone\'s “remove animations” setting always wins.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            ValueListenableBuilder<bool>(
+              valueListenable: animationsEnabled,
+              builder: (BuildContext context, bool value, Widget? _) {
+                return SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+                  title: const Text('Slide transitions'),
+                  value: value,
+                  onChanged: onAnimationsChanged,
+                );
+              },
+            ),
             const Divider(height: 1),
             ListTile(
               leading: const Icon(Icons.logout_rounded),

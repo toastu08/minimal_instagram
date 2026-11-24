@@ -19,8 +19,12 @@ void main() {
     WidgetTester tester, {
     required ValueNotifier<ReelPolicy> policy,
     ValueChanged<ReelPolicy>? onPolicyChanged,
+    ValueNotifier<bool>? animations,
+    ValueChanged<bool>? onAnimationsChanged,
     VoidCallback? onClear,
   }) async {
+    final ValueNotifier<bool> animationsNotifier =
+        animations ?? ValueNotifier<bool>(true);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -32,6 +36,8 @@ void main() {
                   builder: (BuildContext context) => SettingsSheet(
                     reelPolicy: policy,
                     onReelPolicyChanged: onPolicyChanged ?? (ReelPolicy _) {},
+                    animationsEnabled: animationsNotifier,
+                    onAnimationsChanged: onAnimationsChanged ?? (bool _) {},
                     onClearSession: () async => onClear?.call(),
                     version: '9.9.9',
                   ),
@@ -95,6 +101,55 @@ void main() {
     expect(control.selected, <ReelPolicy>{ReelPolicy.block});
   });
 
+  testWidgets('shows the motion control, on by default', (
+    WidgetTester tester,
+  ) async {
+    await openSheet(
+      tester,
+      policy: ValueNotifier<ReelPolicy>(ReelPolicy.allow),
+    );
+
+    expect(find.text('Motion'), findsOneWidget);
+    expect(find.text('Slide transitions'), findsOneWidget);
+
+    final SwitchListTile control = tester.widget(find.byType(SwitchListTile));
+    expect(control.value, isTrue);
+  });
+
+  testWidgets('reports a motion preference change', (
+    WidgetTester tester,
+  ) async {
+    final List<bool> changes = <bool>[];
+    await openSheet(
+      tester,
+      policy: ValueNotifier<ReelPolicy>(ReelPolicy.allow),
+      onAnimationsChanged: changes.add,
+    );
+
+    await tester.tap(find.text('Slide transitions'));
+    await tester.pumpAndSettle();
+
+    expect(changes, <bool>[false]);
+  });
+
+  testWidgets('the motion control follows its notifier', (
+    WidgetTester tester,
+  ) async {
+    final ValueNotifier<bool> animations = ValueNotifier<bool>(true);
+    addTearDown(animations.dispose);
+    await openSheet(
+      tester,
+      policy: ValueNotifier<ReelPolicy>(ReelPolicy.allow),
+      animations: animations,
+    );
+
+    animations.value = false;
+    await tester.pumpAndSettle();
+
+    final SwitchListTile control = tester.widget(find.byType(SwitchListTile));
+    expect(control.value, isFalse);
+  });
+
   testWidgets('clearing asks for confirmation and can be cancelled', (
     WidgetTester tester,
   ) async {
@@ -105,6 +160,8 @@ void main() {
       onClear: () => calls++,
     );
 
+    await tester.ensureVisible(find.text('Clear session'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Clear session'));
     await tester.pumpAndSettle();
 
@@ -126,6 +183,8 @@ void main() {
       onClear: () => calls++,
     );
 
+    await tester.ensureVisible(find.text('Clear session'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Clear session'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Clear'));

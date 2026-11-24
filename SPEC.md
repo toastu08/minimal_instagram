@@ -95,6 +95,25 @@ This screen must be compiled out of release builds.
 There is no native login screen. The user logs in on Instagram's own page inside
 the WebView. The app never reads, stores, or autofills credentials.
 
+### 3.5 Motion
+
+The inbox and a conversation live in the same WebView, and Instagram swaps them
+with a client-side `pushState` that renders no transition, so the change is a
+hard cut. The app adds one short cosmetic slide over that cut:
+
+- entering a conversation sweeps a slide in from the right;
+- returning to the inbox sweeps it in from the left.
+
+The direction comes from the URL path only — inbox-level `/direct/inbox` and
+`/direct/requests`, thread-level `/direct/t/<id>` — through
+`lib/navigation/dm_transition.dart`. Query strings and fragments are ignored.
+
+This is **cosmetic and best effort**, like the sanitizer (AGENTS.md §2.7). It
+never decides navigation, never blocks input, and a missing or ambiguous signal
+simply means no animation; `UrlPolicy` remains the only guarantee. It is
+controlled by **Settings → Motion → Slide transitions** and is always suppressed
+when the operating system asks for reduced motion.
+
 ---
 
 ## 4. Route policy
@@ -434,6 +453,16 @@ driven by an integration test.
 **Acceptance:** `flutter test integration_test` passes on the emulator;
 `flutter analyze` and `flutter test` clean; all four documents current.
 
+### M8 — Motion
+
+A cosmetic slide between the inbox and a conversation so the WebView's hard
+`pushState` cut feels alive. Direction is derived from the URL; the route policy
+is unchanged.
+
+**Acceptance:** manual checklist §10.6 passes; `flutter analyze` and `flutter
+test` clean; the animation is suppressed by the setting and by the system
+reduce-motion flag; no new dependency is added.
+
 ---
 
 ## 10. Manual test checklists
@@ -535,6 +564,15 @@ Checked on device on 2026-11-23; see `PROGRESS.md` §14. The first run failed th
 "Create new account" item: the sign-up flow is rendered client-side with no URL
 and slipped past the URL layers. It is now refused by the in-page guard, with a
 reload backstop.
+
+### 10.6 Motion (M8)
+
+- [ ] Opening a conversation slides the content in from the right
+- [ ] Going back to the inbox slides the content in from the left
+- [ ] Reloading a page does not play the slide
+- [ ] Settings → Motion → Slide transitions off makes both directions instant
+- [ ] With the phone's "remove animations" setting on, both are instant
+- [ ] The slide never blocks a tap and never leaves the page offset
 
 ---
 

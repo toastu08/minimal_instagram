@@ -59,4 +59,49 @@ void main() {
 
     expect(notifications, 0);
   });
+
+  group('motion', () {
+    test('a fresh install has animations enabled', () async {
+      final AppSettings settings = await AppSettings.load();
+      expect(settings.animationsEnabled.value, isTrue);
+    });
+
+    test('an already-stored disabled choice is read back', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'animations_enabled': false,
+      });
+
+      final AppSettings settings = await AppSettings.load();
+      expect(settings.animationsEnabled.value, isFalse);
+    });
+
+    test('changing the choice updates the notifier and persists it', () async {
+      final AppSettings settings = await AppSettings.load();
+      int notifications = 0;
+      settings.animationsEnabled.addListener(() => notifications++);
+
+      await settings.setAnimationsEnabled(false);
+
+      expect(settings.animationsEnabled.value, isFalse);
+      expect(notifications, 1);
+      expect(
+        (await SharedPreferences.getInstance()).getBool('animations_enabled'),
+        isFalse,
+      );
+
+      // A second, independent load sees the stored value.
+      final AppSettings reloaded = await AppSettings.load();
+      expect(reloaded.animationsEnabled.value, isFalse);
+    });
+
+    test('setting the same value does not notify again', () async {
+      final AppSettings settings = await AppSettings.load();
+      int notifications = 0;
+      settings.animationsEnabled.addListener(() => notifications++);
+
+      await settings.setAnimationsEnabled(true);
+
+      expect(notifications, 0);
+    });
+  });
 }
